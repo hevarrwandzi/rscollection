@@ -2,7 +2,7 @@ node_modules
 .env
 .git
 npm-debug.log
-Dockerfile*
-docker-compose*
-README.md
-.dockerignore
+node_modules/
+.DS_Store
+dist/
+coverage/

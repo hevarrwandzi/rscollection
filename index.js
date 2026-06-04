@@ -26,7 +26,10 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
 });
-
+// health check endpoint
+app.get("/health", (req, res) => {
+  res.json({ status: "OK" });
+});
 const productSelect = `
   SELECT
     id,
