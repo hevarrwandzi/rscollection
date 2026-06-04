@@ -34,4 +34,4 @@ ON CONFLICT (slug) DO UPDATE SET
   featured = EXCLUDED.featured,
   image_url = EXCLUDED.image_url;
 // health check
-pg_isready -h localhost -p 5432 -U postgres
+pg_isready -h db -p 5432 -U postgres
