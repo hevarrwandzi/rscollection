@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Realm Relics | Fantasy-Inspired Accessories</title>
+    <meta name="description" content="Shop original fantasy-inspired necklaces, pendants, charms, and collectible accessories from Realm Relics." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="storefront">
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <header class="site-header">
+      <a class="brand" href="#home" aria-label="Realm Relics home">
+        <span class="brand-mark">✦</span>
+        <span><strong>Realm Relics</strong><small>Original fantasy accessories</small></span>
+      </a>
+      <nav class="nav-links" aria-label="Main navigation">
+        <a href="#catalog">Shop</a>
+        <a href="#featured">Featured</a>
+        <a href="#story">Our craft</a>
+        <a href="#contact">Contact</a>
+      </nav>
+      <button class="button cart-button" id="open-cart" type="button">Cart <span id="cart-count">0</span></button>
+    </header>
+
+    <main id="home">
+      <section class="hero section-shell">
+        <div class="hero-copy">
+          <p class="eyebrow">Fantasy-inspired jewelry & charms</p>
+          <h1>Relics made for adventurers, collectors, and everyday magic.</h1>
+          <p class="hero-text">Browse original necklaces, pendants, key charms, moonlit chains, and crystal accessories with clear prices, materials, stock status, and a simple cart-style order flow.</p>
+          <div class="hero-actions">
+            <a class="button primary" href="#catalog">Shop the collection</a>
+            <a class="button ghost" href="#featured">See featured relics</a>
+          </div>
+          <div class="trust-strip" aria-label="Shop promises">
+            <div><strong>Material details</strong><span>Listed on every product</span></div>
+            <div><strong>Gift-ready style</strong><span>Collector-friendly presentation</span></div>
+            <div><strong>Original themes</strong><span>No trademarked replicas</span></div>
+          </div>
+        </div>
+
+        <aside class="hero-card" aria-label="Featured product highlight">
+          <p class="eyebrow">Limited drop</p>
+          <h2>Crystal Guardian Pendant</h2>
+          <p>Silver wing frame, sapphire-toned crystal core, and a clean fantasy silhouette for cosplay or everyday wear.</p>
+          <div class="hero-price-row"><span>$89.00</span><span>12 in stock</span></div>
+        </aside>
+      </section>
+
+      <section class="section-shell category-rail" aria-label="Product themes">
+        <button type="button" data-style="Crystal">Crystal</button>
+        <button type="button" data-style="Key Charm">Key charms</button>
+        <button type="button" data-style="Celestial">Celestial</button>
+        <button type="button" data-style="Gothic">Gothic</button>
+        <button type="button" data-style="Royal">Royal</button>
+        <button type="button" data-style="Pendant">Pendants</button>
+      </section>
+
+      <section class="section-shell store-promise" id="story">
+        <article><span>01</span><h3>Clear product details</h3><p>Every relic shows material, size, color, stock, and pricing so customers understand exactly what they are browsing.</p></article>
+        <article><span>02</span><h3>Fantasy feel, original identity</h3><p>Inspired by RPG aesthetics without copying protected names, logos, or franchise artifacts.</p></article>
+        <article><span>03</span><h3>Ready for real orders</h3><p>A cart-style flow helps shoppers collect items and contact you with a prepared order summary.</p></article>
+      </section>
+
+      <section class="section-shell panel" id="catalog">
+        <div class="section-head">
+          <div><p class="eyebrow">Catalog</p><h2>Shop the collection</h2><p class="muted">Search by product name, material, or theme. Filter by style and price.</p></div>
+          <span id="results-summary" class="pill">Loading products...</span>
+        </div>
+
+        <form id="filter-form" class="toolbar" aria-label="Product filters">
+          <label><span>Search</span><input id="search" name="q" type="search" placeholder="crystal, key, moon, wing..." /></label>
+          <label><span>Category</span><select id="style" name="style"><option value="">All styles</option><option value="Crystal">Crystal</option><option value="Key Charm">Key Charm</option><option value="Pendant">Pendant</option><option value="Gothic">Gothic</option><option value="Celestial">Celestial</option><option value="Royal">Royal</option></select></label>
+          <label><span>Max price</span><input id="maxPrice" name="maxPrice" type="number" min="0" step="0.01" placeholder="120" /></label>
+          <label class="check-card"><input id="featuredOnly" name="featured" type="checkbox" /><span>Featured only</span></label>
+          <button class="button primary" type="submit">Apply filters</button>
+          <button class="button ghost" id="reset-filters" type="button">Reset</button>
+        </form>
+
+        <div id="products-grid" class="product-grid"></div>
+      </section>
+
+      <section class="section-shell" id="featured">
+        <div class="section-head">
+          <div><p class="eyebrow">Featured</p><h2>Highlighted relics</h2></div>
+          <span class="pill">Hand-picked pieces</span>
+        </div>
+        <div id="featured-grid" class="product-grid featured-grid"></div>
+      </section>
+
+      <section class="section-shell contact-panel" id="contact">
+        <div><p class="eyebrow">Order intent</p><h2>Want one of these pieces?</h2><p class="muted">Add items to the cart and use the prepared order summary to contact the seller. Payment and delivery can be connected later when you host the shop.</p></div>
+        <button class="button primary" id="contact-cart" type="button">Prepare order summary</button>
+      </section>
+    </main>
+
+    <footer class="site-footer section-shell">
+      <div><strong>Realm Relics</strong><p>Original fantasy-inspired accessories, charms, pendants, and collectible gifts.</p></div>
+      <div><span>Shop</span><a href="#catalog">Catalog</a><a href="#featured">Featured</a></div>
+      <div><span>Support</span><a href="#contact">Contact/order</a><a href="#story">Materials & craft</a></div>
+    </footer>
+
+    <dialog id="product-dialog" class="modal">
+      <button class="modal-close" type="button" data-close-modal aria-label="Close product details">×</button>
+      <div id="product-detail" class="product-detail"></div>
+    </dialog>
+
+    <aside class="cart-drawer" id="cart-drawer" aria-hidden="true">
+      <div class="cart-header"><div><p class="eyebrow">Cart</p><h2>Your relics</h2></div><button class="modal-close" id="close-cart" type="button" aria-label="Close cart">×</button></div>
+      <div id="cart-items" class="cart-items"></div>
+      <div class="cart-footer"><div class="cart-total"><span>Total</span><strong id="cart-total">$0.00</strong></div><button class="button primary" id="copy-order" type="button">Copy order summary</button><p id="cart-message" class="form-message" role="status"></p></div>
+    </aside>
+    <div class="drawer-backdrop" id="drawer-backdrop"></div>
+
+    <template id="product-card-template">
+      <article class="product-card">
+        <div class="image-wrap"><img class="product-image" alt="" /><span class="badge"></span></div>
+        <div class="product-body">
+          <div class="product-topline"><span class="style-pill"></span><span class="price"></span></div>
+          <h3 class="name"></h3>
+          <p class="description"></p>
+          <div class="stock-line"></div>
+          <div class="card-actions"><button class="button ghost details-button" type="button">View details</button><button class="button primary add-cart-button" type="button">Add to cart</button></div>
+        </div>
+      </article>
+    </template>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

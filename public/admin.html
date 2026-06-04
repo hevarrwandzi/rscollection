@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Realm Relics Admin | Product Management</title>
+    <meta name="robots" content="noindex,nofollow" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body data-page="admin">
+    <div class="ambient ambient-one"></div>
+    <header class="site-header admin-header">
+      <a class="brand" href="/" aria-label="Back to storefront"><span class="brand-mark">✦</span><span><strong>Realm Relics</strong><small>Admin workspace</small></span></a>
+      <nav class="nav-links"><a href="/">View storefront</a></nav>
+    </header>
+
+    <main class="section-shell admin-page">
+      <section class="admin-gate" id="admin-gate">
+        <p class="eyebrow">Protected admin</p>
+        <h1>Inventory management</h1>
+        <p class="muted">Enter the admin token configured on the server. The public storefront cannot create, update, or delete products.</p>
+        <form id="admin-token-form" class="token-form">
+          <label><span>Admin token</span><input id="admin-token" type="password" autocomplete="current-password" placeholder="Paste admin token" required /></label>
+          <button class="button primary" type="submit">Unlock admin</button>
+          <button class="button ghost" id="clear-admin-token" type="button">Clear token</button>
+        </form>
+        <p id="token-message" class="form-message" role="status"></p>
+      </section>
+
+      <section class="admin-dashboard hidden" id="admin-dashboard">
+        <aside class="admin-sidebar">
+          <p class="eyebrow">Admin dashboard</p>
+          <h2 id="admin-title">Create product</h2>
+          <p id="admin-subtitle" class="muted">Manage inventory from this private workspace. Hosting and DevOps stay separate.</p>
+          <div class="admin-stats">
+            <div><span>Total value</span><strong id="stat-value">$0</strong></div>
+            <div><span>Low stock</span><strong id="stat-lowstock">0</strong></div>
+          </div>
+          <div class="admin-note"><strong>Workflow</strong><ol><li>Create products with unique slugs.</li><li>Edit inventory rows to update items.</li><li>Deletes require token authorization.</li></ol></div>
+        </aside>
+
+        <div class="admin-workspace">
+          <form id="product-form" class="product-form">
+            <input type="hidden" name="product_id" />
+            <div class="form-grid two">
+              <label><span>Slug</span><input name="slug" placeholder="crystal-guardian-pendant" required /></label>
+              <label><span>Name</span><input name="name" placeholder="Crystal Guardian Pendant" required /></label>
+            </div>
+            <div class="form-grid three">
+              <label><span>Material</span><input name="material" placeholder="Stainless steel & crystal" required /></label>
+              <label><span>Color</span><input name="color" placeholder="Silver / Sapphire" required /></label>
+              <label><span>Style</span><input name="style" list="style-options" placeholder="Crystal" required /><datalist id="style-options"><option value="Crystal"></option><option value="Key Charm"></option><option value="Pendant"></option><option value="Gothic"></option><option value="Celestial"></option><option value="Royal"></option></datalist></label>
+            </div>
+            <div class="form-grid three">
+              <label><span>Length / size</span><input name="chain_length_cm" type="number" min="1" placeholder="45" required /></label>
+              <label><span>Price</span><input name="price" type="number" min="0" step="0.01" placeholder="89.00" required /></label>
+              <label><span>Stock</span><input name="stock" type="number" min="0" step="1" placeholder="10" value="0" /></label>
+            </div>
+            <label><span>Image URL</span><input name="image_url" type="url" placeholder="https://images.unsplash.com/..." /></label>
+            <label><span>Description</span><textarea name="description" placeholder="Describe the item, vibe, material, and outfit/cosplay use." required></textarea></label>
+            <div class="form-footer">
+              <label class="check-card inline"><input name="featured" type="checkbox" /><span>Mark as featured</span></label>
+              <div class="form-actions"><button class="button ghost hidden" id="cancel-edit" type="button">Cancel edit</button><button class="button primary" id="submit-button" type="submit">Create product</button></div>
+            </div>
+          </form>
+          <p id="form-message" class="form-message" role="status"></p>
+          <div class="inventory-panel">
+            <div class="section-head tight"><div><p class="eyebrow">Inventory</p><h3>Product management</h3></div><span id="inventory-count" class="pill">0 items</span></div>
+            <div id="inventory-list" class="inventory-list"></div>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
