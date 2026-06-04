@@ -33,5 +33,3 @@ ON CONFLICT (slug) DO UPDATE SET
   stock = EXCLUDED.stock,
   featured = EXCLUDED.featured,
   image_url = EXCLUDED.image_url;
-// health check
-pg_isready -h db -p 5432 -U postgres
