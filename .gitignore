@@ -6,7 +6,6 @@ node_modules/
 .DS_Store
 dist/
 coverage/
-backups/
-backups/*.sql
-backups/*.dump
-backups/*.gz
+# Keep backup directory, ignore generated backup files
+backups/*
+!backups/.gitkeep
