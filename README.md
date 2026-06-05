@@ -69,28 +69,39 @@ docker compose version
 
 ## Environment Variables
 
-Create a local `.env` file from the example:
+Copy the example environment file before starting the stack:
 
 ```bash
 cp .env.example .env
 ```
 
-Then edit `.env` and set real values:
+Then edit `.env` with real local or server values. Required variables:
 
 ```env
-DB_HOST=db
-DB_PORT=5432
-DB_NAME=shop
 DB_USER=postgres
 DB_PASSWORD=change-me
+DB_NAME=shop
+DB_HOST=db
+DB_PORT=5432
 ADMIN_TOKEN=change-me
+PORT=3000
 ```
+
+Variable purpose:
+
+- `DB_USER` - PostgreSQL username.
+- `DB_PASSWORD` - PostgreSQL password.
+- `DB_NAME` - PostgreSQL database name.
+- `DB_HOST` - database host inside Docker Compose, usually `db`.
+- `DB_PORT` - PostgreSQL port, usually `5432`.
+- `ADMIN_TOKEN` - token required for admin product create/update/delete routes.
+- `PORT` - app port inside the container, usually `3000`.
 
 Notes:
 
 - `.env` must stay private and must not be committed.
 - `.env.example` is safe to commit because it contains placeholders only.
-- `ADMIN_TOKEN` is required for product create/update/delete routes.
+- Use strong, unique values for `DB_PASSWORD` and `ADMIN_TOKEN` on a real server.
 
 ## Run Locally with Docker Compose
 
