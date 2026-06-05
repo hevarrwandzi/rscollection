@@ -28,7 +28,7 @@ const pool = new Pool({
 });
 // Health check endpoint used by Docker/Nginx/monitoring.
 // It verifies both the Node process and PostgreSQL connectivity.
-app.get("/health", async (req, res) => {
+async function healthCheck(req, res) {
   try {
     await pool.query("SELECT 1");
 
@@ -47,7 +47,10 @@ app.get("/health", async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   }
-});
+}
+
+app.get("/health", healthCheck);
+app.get("/api/health", healthCheck);
 const productSelect = `
   SELECT
     id,

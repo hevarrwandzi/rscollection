@@ -10,6 +10,7 @@ This repository is being used as a DevOps practice project: the application exis
 - **Backend:** Express
 - **Database:** PostgreSQL 17
 - **Frontend:** Static HTML/CSS/JavaScript served by Express
+- **Reverse proxy:** Nginx 1.27 Alpine
 - **Containerization:** Docker + Docker Compose
 
 ## Architecture
@@ -17,9 +18,13 @@ This repository is being used as a DevOps practice project: the application exis
 ```text
 Browser
   |
-  | HTTP :3000
+  | HTTP :8080
   v
-app container — Node.js / Express
+nginx container — reverse proxy
+  |
+  | Compose internal network: app:3000
+  v
+app container — Node.js / Express API + static frontend
   |
   | Compose internal network: db:5432
   v
@@ -32,7 +37,8 @@ Docker named volume: aa_db_data / db_data
 ## DevOps Work Implemented
 
 - Dockerized the Node.js application.
-- Added Docker Compose with separate `app` and `db` services.
+- Added Docker Compose with separate `nginx`, `app`, and `db` services.
+- Added Nginx as the public entrypoint on host port `8080`, proxying to the app container on the internal Compose network.
 - Added PostgreSQL named volume for persistent database data.
 - Added `init.sql` database bootstrap for product schema and seed data.
 - Added `.env.example` and kept real `.env` out of Git.
@@ -42,8 +48,9 @@ Docker named volume: aa_db_data / db_data
   - `NODE_ENV=production`
   - `npm ci --omit=dev`
   - non-root `node` runtime user
-- Added Compose healthchecks for both app and database.
-- Added `depends_on.condition: service_healthy` so the app waits for PostgreSQL readiness.
+- Added DB-backed Express health endpoints at `/health` and `/api/health`.
+- Added Compose healthchecks for Nginx, app, and database.
+- Added `depends_on.condition: service_healthy` so the app waits for PostgreSQL readiness and Nginx waits for app readiness.
 - Added restart policies with `restart: unless-stopped`.
 - Fixed npm audit vulnerabilities; current expected result is `found 0 vulnerabilities`.
 
@@ -108,20 +115,21 @@ docker compose ps
 Expected state:
 
 ```text
-aa-app-1   Up ... (healthy)
-aa-db-1    Up ... (healthy)
+aa-nginx-1   Up ... (healthy)   0.0.0.0:8080->80/tcp
+aa-app-1     Up ... (healthy)   3000/tcp
+aa-db-1      Up ... (healthy)   5432/tcp
 ```
 
 Open the site:
 
 ```text
-http://localhost:3000
+http://localhost:8080
 ```
 
 Admin page:
 
 ```text
-http://localhost:3000/admin
+http://localhost:8080/admin
 ```
 
 ## Smoke Tests
@@ -129,19 +137,26 @@ http://localhost:3000/admin
 Check API metadata:
 
 ```bash
-curl -fsS http://localhost:3000/api
+curl -fsS http://localhost:8080/api
+```
+
+Check DB-backed health through Nginx:
+
+```bash
+curl -fsS http://localhost:8080/health
+curl -fsS http://localhost:8080/api/health
 ```
 
 Check products:
 
 ```bash
-curl -fsS http://localhost:3000/products
+curl -fsS http://localhost:8080/products
 ```
 
 Check featured products:
 
 ```bash
-curl -fsS http://localhost:3000/featured-products
+curl -fsS http://localhost:8080/featured-products
 ```
 
 Expected result: JSON responses with no 500 errors.
@@ -154,13 +169,30 @@ The database healthcheck uses PostgreSQL's built-in readiness tool:
 pg_isready -U ${DB_USER} -d ${DB_NAME}
 ```
 
-The app healthcheck uses Node.js to request the local `/api` endpoint inside the container:
+The app healthcheck uses Node.js to request the local `/health` endpoint inside the app container:
 
 ```bash
-node -e "require('http').get('http://localhost:3000/api', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
+node -e "require('http').get('http://localhost:3000/health', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
 ```
 
 Why Node instead of curl/wget? The app image does not install curl or wget, and Node is already available.
+
+The Nginx healthcheck requests `/health` through the reverse proxy:
+
+```bash
+curl -f http://localhost:80/health
+```
+
+Both `/health` and `/api/health` verify PostgreSQL connectivity by running a lightweight database query. A healthy response looks like:
+
+```json
+{
+  "status": "ok",
+  "database": "connected",
+  "uptime_seconds": 12,
+  "timestamp": "2026-06-05T01:08:50.483Z"
+}
+```
 
 Inspect health status:
 
@@ -171,7 +203,7 @@ docker compose ps
 Or directly:
 
 ```bash
-docker inspect --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' aa-app-1 aa-db-1
+docker inspect --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' aa-nginx-1 aa-app-1 aa-db-1
 ```
 
 ## Logs
@@ -192,6 +224,12 @@ View recent logs only:
 
 ```bash
 docker compose logs --tail=80 app
+```
+
+View Nginx logs:
+
+```bash
+docker compose logs --tail=80 nginx
 ```
 
 ## Stop / Start / Rebuild
@@ -294,7 +332,7 @@ docker compose down -v
 docker compose up -d db
 # wait until db is healthy
 docker compose exec -T db psql -U postgres -d shop < backups/your-backup.sql
-docker compose up -d app
+docker compose up -d app nginx
 ```
 
 ## Dependency Security Check
@@ -323,9 +361,9 @@ docker compose up -d
 Admin routes require a bearer token:
 
 ```bash
-curl -X POST http://localhost:3000/products \
+curl -X POST http://localhost:8080/products \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ADMIN_TOKEN" \
+  -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -d '{
     "slug": "example-product",
     "name": "Example Product",
@@ -384,7 +422,9 @@ docker compose up -d --build
 
 ### Port 3000 already in use
 
-Find the process:
+The app container exposes port `3000` only inside the Docker Compose network. It is not published to the host. The public local entrypoint is Nginx on port `8080`.
+
+If you manually publish app port `3000` later and hit a conflict, find the process:
 
 ```bash
 ss -ltnp | grep ':3000'
@@ -401,11 +441,25 @@ ports:
 
 This project does not publish PostgreSQL to the host. That is intentional. The app connects to `db:5432` over the Docker Compose internal network.
 
+### Port 8080 already in use
+
+Nginx publishes host port `8080`. If Compose fails because the port is already allocated, find the conflicting process:
+
+```bash
+ss -ltnp | grep ':8080'
+```
+
+Then either stop the conflicting process or change the host port mapping in Compose:
+
+```yaml
+ports:
+  - "8081:80"
+```
+
 ## Production Notes / Next Improvements
 
 Still recommended before a real production deployment:
 
-- Add Nginx or Caddy reverse proxy.
 - Add HTTPS.
 - Deploy to VPS or AWS EC2.
 - Add GitHub Actions CI/CD.
@@ -413,7 +467,7 @@ Still recommended before a real production deployment:
 - Add external uptime monitoring.
 - Restrict CORS for production domains.
 - Move secrets to a proper secret manager or deployment environment variables.
-- Add a real `/health` endpoint that checks database connectivity, not only `/api`.
+- Add rate limiting and tighter production security headers at the reverse proxy/app layer.
 
 ## Portfolio Summary
 
@@ -423,6 +477,7 @@ This project demonstrates operational ownership of an e-commerce app:
 - database service orchestration
 - environment variable management
 - healthchecks and startup ordering
+- Nginx reverse proxy in front of the app container
 - restart policies
 - Docker build optimization
 - dependency vulnerability cleanup
@@ -430,4 +485,4 @@ This project demonstrates operational ownership of an e-commerce app:
 
 A concise way to describe this project:
 
-> I took an existing Node.js/PostgreSQL online shop and made it reproducible and safer to operate with Docker Compose, PostgreSQL bootstrapping, environment configuration, healthchecks, restart policies, non-root container runtime, npm audit cleanup, and a practical runbook.
+> I took an existing Node.js/PostgreSQL online shop and made it reproducible and safer to operate with Docker Compose, PostgreSQL bootstrapping, environment configuration, DB-backed healthchecks, Nginx reverse proxying, restart policies, non-root container runtime, npm audit cleanup, and a practical runbook.
