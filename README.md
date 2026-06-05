@@ -145,6 +145,30 @@ http://localhost:8080/admin
 
 ## Smoke Tests
 
+Run the full local stack validation script:
+
+```bash
+./scripts/check-stack.sh
+```
+
+The script verifies:
+
+- Docker Compose config is valid
+- Nginx, app, and database containers are healthy
+- `/health` returns database connected
+- `/products` returns product data
+- at least one database backup exists
+- only Nginx is publicly exposed
+- production dependencies have no known audit vulnerabilities
+
+Expected final output:
+
+```text
+Stack check passed ^.^
+```
+
+Manual checks are also useful when debugging individual endpoints.
+
 Check API metadata:
 
 ```bash
