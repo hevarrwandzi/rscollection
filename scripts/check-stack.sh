@@ -28,4 +28,10 @@ echo "Checking database backups..."
 find backups -maxdepth 1 -type f -name "*.sql" | grep -q .
 echo "Database backup exists"
 
+echo "Checking public port exposure..."
+docker compose config | grep -q 'published: "8080"'
+! docker compose config | grep -q 'published: "3000"'
+! docker compose config | grep -q 'published: "5432"'
+echo "Only Nginx is publicly exposed"
+
 echo "Stack check passed ^.^"
