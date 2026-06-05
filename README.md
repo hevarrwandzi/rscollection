@@ -295,44 +295,57 @@ Use this only when local data is disposable.
 
 ## Backup Database
 
-Create a backup directory:
+Backups are written to the local `backups/` directory. The directory placeholder `backups/.gitkeep` is safe to commit, but generated backup files are ignored by Git.
+
+Create a backup with the helper script:
 
 ```bash
-mkdir -p backups
+./scripts/backup-db.sh
 ```
 
-Backup with `pg_dump` from inside the db container:
+The script runs `pg_dump` inside the `db` container and writes a timestamped SQL file like:
 
-```bash
-docker compose exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" > backups/shop-$(date +%Y%m%d-%H%M%S).sql
+```text
+backups/shop-YYYYMMDD-HHMMSS.sql
 ```
 
-If your shell does not have the variables loaded, use explicit values from `.env` manually, for example:
+Verify a backup exists:
 
 ```bash
-docker compose exec -T db pg_dump -U postgres -d shop > backups/shop-$(date +%Y%m%d-%H%M%S).sql
+ls -lh backups/
 ```
 
 Do not commit real backup files if they contain production/customer data.
 
 ## Restore Database
 
-Danger: restore can overwrite data depending on backup contents.
+Danger: restore changes database data. Only restore when the target database can be overwritten or repaired from another backup.
 
-Basic restore into the current database:
+Restore a backup into the current database:
 
 ```bash
-docker compose exec -T db psql -U postgres -d shop < backups/your-backup.sql
+./scripts/restore-db.sh backups/shop-YYYYMMDD-HHMMSS.sql
 ```
 
-For a clean local restore, recreate the database volume first:
+For a cleaner local restore, the restore script also supports resetting the `public` schema first:
 
 ```bash
-docker compose down -v
-docker compose up -d db
-# wait until db is healthy
-docker compose exec -T db psql -U postgres -d shop < backups/your-backup.sql
-docker compose up -d app nginx
+./scripts/restore-db.sh --clean backups/shop-YYYYMMDD-HHMMSS.sql
+```
+
+The restore script:
+
+- loads `DB_USER` and `DB_NAME` from `.env` when available
+- defaults to `postgres` / `shop`
+- uses `psql -v ON_ERROR_STOP=1` so SQL restore errors fail loudly
+- checks that the backup file exists before restoring
+
+After restoring, check the app:
+
+```bash
+docker compose ps
+curl -fsS http://localhost:8080/health
+curl -fsS http://localhost:8080/products
 ```
 
 ## Dependency Security Check
