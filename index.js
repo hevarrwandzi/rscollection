@@ -26,9 +26,27 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
 });
-// health check endpoint
-app.get("/health", (req, res) => {
-  res.json({ status: "OK" });
+// Health check endpoint used by Docker/Nginx/monitoring.
+// It verifies both the Node process and PostgreSQL connectivity.
+app.get("/health", async (req, res) => {
+  try {
+    await pool.query("SELECT 1");
+
+    res.json({
+      status: "ok",
+      database: "connected",
+      uptime_seconds: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error("Health check failed:", error.message);
+
+    res.status(503).json({
+      status: "error",
+      database: "disconnected",
+      timestamp: new Date().toISOString(),
+    });
+  }
 });
 const productSelect = `
   SELECT
