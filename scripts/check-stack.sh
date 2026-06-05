@@ -34,4 +34,8 @@ docker compose config | grep -q 'published: "8080"'
 ! docker compose config | grep -q 'published: "5432"'
 echo "Only Nginx is publicly exposed"
 
+echo "Checking production dependency vulnerabilities..."
+docker compose run --rm app npm audit --omit=dev
+echo "Production dependency audit OK"
+
 echo "Stack check passed ^.^"
