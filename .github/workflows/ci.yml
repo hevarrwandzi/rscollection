@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Validate app and Docker config
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check server syntax
+        run: node --check index.js
+
+      - name: Check frontend syntax
+        run: node --check public/app.js
+
+      - name: Validate Docker Compose config
+        run: docker compose config --quiet
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
