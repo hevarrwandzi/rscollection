@@ -37,3 +37,33 @@ jobs:
 
       - name: Audit production dependencies
         run: npm audit --omit=dev --audit-level=high
+
+      - name: Build Docker images
+        run: docker compose build
+
+      - name: Start stack
+        run: docker compose up -d
+
+      - name: Wait for stack health
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/health | grep -q '"status":"ok"'; then
+              echo "Stack is healthy"
+              exit 0
+            fi
+            echo "Waiting for stack..."
+            docker compose ps
+            sleep 3
+          done
+
+          echo "Stack did not become healthy"
+          docker compose logs
+          exit 1
+
+      - name: Check products API
+        run: |
+          curl -fsS http://localhost:8080/api/products | grep -q "Crown Charm Chain"
+
+      - name: Stop stack
+        if: always()
+        run: docker compose down -v
