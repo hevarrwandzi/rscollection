@@ -3,17 +3,17 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Realm Relics Admin | Product Management</title>
+    <title>RS Collection Admin | Product Management</title>
     <meta name="robots" content="noindex,nofollow" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body data-page="admin">
     <div class="ambient ambient-one"></div>
     <header class="site-header admin-header">
-      <a class="brand" href="/" aria-label="Back to storefront"><span class="brand-mark">✦</span><span><strong>Realm Relics</strong><small>Admin workspace</small></span></a>
+      <a class="brand" href="/" aria-label="Back to storefront"><span class="brand-mark">RS</span><span><strong>RS Collection</strong><small>Admin workspace</small></span></a>
       <nav class="nav-links"><a href="/">View storefront</a></nav>
     </header>
 
@@ -34,7 +34,7 @@
         <aside class="admin-sidebar">
           <p class="eyebrow">Admin dashboard</p>
           <h2 id="admin-title">Create product</h2>
-          <p id="admin-subtitle" class="muted">Manage inventory from this private workspace. Hosting and DevOps stay separate.</p>
+          <p id="admin-subtitle" class="muted">Manage RS Collection inventory from this private workspace. Hosting and DevOps stay separate.</p>
           <div class="admin-stats">
             <div><span>Total value</span><strong id="stat-value">$0</strong></div>
             <div><span>Low stock</span><strong id="stat-lowstock">0</strong></div>
@@ -46,20 +46,20 @@
           <form id="product-form" class="product-form">
             <input type="hidden" name="product_id" />
             <div class="form-grid two">
-              <label><span>Slug</span><input name="slug" placeholder="crystal-guardian-pendant" required /></label>
-              <label><span>Name</span><input name="name" placeholder="Crystal Guardian Pendant" required /></label>
+              <label><span>Slug</span><input name="slug" placeholder="crown-charm-chain" required /></label>
+              <label><span>Name</span><input name="name" placeholder="Crown Charm Chain" required /></label>
             </div>
             <div class="form-grid three">
-              <label><span>Material</span><input name="material" placeholder="Stainless steel & crystal" required /></label>
-              <label><span>Color</span><input name="color" placeholder="Silver / Sapphire" required /></label>
-              <label><span>Style</span><input name="style" list="style-options" placeholder="Crystal" required /><datalist id="style-options"><option value="Crystal"></option><option value="Key Charm"></option><option value="Pendant"></option><option value="Gothic"></option><option value="Celestial"></option><option value="Royal"></option></datalist></label>
+              <label><span>Material</span><input name="material" placeholder="Alloy chain, mixed charms" required /></label>
+              <label><span>Color</span><input name="color" placeholder="Silver / multicolor" required /></label>
+              <label><span>Style</span><input name="style" list="style-options" placeholder="Charm chain" required /><datalist id="style-options"><option value="Charm chain"></option><option value="Pendant"></option><option value="Key pendant"></option><option value="Blade pendant"></option></datalist></label>
             </div>
             <div class="form-grid three">
               <label><span>Length / size</span><input name="chain_length_cm" type="number" min="1" placeholder="45" required /></label>
-              <label><span>Price</span><input name="price" type="number" min="0" step="0.01" placeholder="89.00" required /></label>
+              <label><span>Price</span><input name="price" type="number" min="0" step="0.01" placeholder="18.00" required /></label>
               <label><span>Stock</span><input name="stock" type="number" min="0" step="1" placeholder="10" value="0" /></label>
             </div>
-            <label><span>Image URL</span><input name="image_url" type="url" placeholder="https://images.unsplash.com/..." /></label>
+            <label><span>Image URL</span><input name="image_url" type="text" placeholder="/assets/products/charm-chain.png" /></label>
             <label><span>Description</span><textarea name="description" placeholder="Describe the item, vibe, material, and outfit/cosplay use." required></textarea></label>
             <div class="form-footer">
               <label class="check-card inline"><input name="featured" type="checkbox" /><span>Mark as featured</span></label>

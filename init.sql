@@ -16,12 +16,11 @@ CREATE TABLE IF NOT EXISTS products (
 
 INSERT INTO products (slug, name, description, material, color, style, chain_length_cm, price, stock, featured, image_url)
 VALUES
-  ('crystal-guardian-pendant', 'Crystal Guardian Pendant', 'Fantasy pendant with a sapphire crystal core and wing-shaped frame, designed for RPG collectors and cosplay outfits.', 'Stainless steel, crystal glass', 'Silver / Sapphire', 'Crystal', 45, 89.00, 12, TRUE, 'https://images.unsplash.com/photo-1602173574767-37ac01994b2a?auto=format&fit=crop&w=1000&q=80'),
-  ('heartbound-key-necklace', 'Heartbound Key Necklace', 'A polished key-charm necklace with heart and crown details for fans of magical kingdom aesthetics.', 'Gold-plated alloy', 'Gold / Ruby', 'Key Charm', 50, 74.50, 9, TRUE, 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1000&q=80'),
-  ('moonblade-chain', 'Moonblade Chain', 'Dark silver crescent pendant with blade-like edges for gothic fantasy outfits and night-market styling.', 'Blackened stainless steel', 'Gunmetal / Moonstone', 'Gothic', 48, 58.00, 15, FALSE, 'https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?auto=format&fit=crop&w=1000&q=80'),
-  ('summoner-star-charm', 'Summoner Star Charm', 'Celestial star charm with a tiny crystal drop, made for soft fantasy looks and everyday accessory sets.', 'Sterling silver, cubic zirconia', 'Silver / Clear', 'Celestial', 42, 64.00, 6, TRUE, 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=1000&q=80'),
-  ('royal-crown-relic', 'Royal Crown Relic', 'Small crown pendant with violet stone detail, a clean statement piece for fantasy formalwear.', 'Gold-plated brass, violet crystal', 'Gold / Violet', 'Royal', 46, 96.00, 3, TRUE, 'https://images.unsplash.com/photo-1588444837495-c6cfeb53f32d?auto=format&fit=crop&w=1000&q=80'),
-  ('silver-wing-token', 'Silver Wing Token', 'Minimal wing pendant for casual outfits, convention gifts, and RPG-inspired accessory bundles.', 'Stainless steel', 'Silver', 'Pendant', 44, 42.00, 18, FALSE, 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=1000&q=80')
+  ('crown-charm-chain', 'Crown Charm Chain', 'Multi-charm necklace with colored beads, crown detail, and a playful anime accessory feel.', 'Alloy chain, mixed charms, beads', 'Silver / multicolor', 'Charm chain', 45, 18.00, 10, TRUE, '/assets/products/charm-chain.png'),
+  ('silver-wolf-pendant', 'Silver Wolf Pendant', 'Sharp silver pendant with fantasy crest energy for dark outfits and collector styling.', 'Alloy pendant, steel chain', 'Silver', 'Pendant', 50, 14.00, 12, TRUE, '/assets/products/sword-pendant.png'),
+  ('skeleton-key-necklace', 'Skeleton Key Necklace', 'Clean silver key pendant for anime-inspired outfits, daily wear, or gifting.', 'Alloy key pendant, steel chain', 'Silver', 'Key pendant', 50, 12.00, 15, TRUE, '/assets/products/key-pendant.png'),
+  ('dragon-blade-pendant', 'Dragon Blade Pendant', 'Long blade-shaped pendant with detailed silver finish and dark fantasy energy.', 'Alloy pendant, steel chain', 'Silver', 'Blade pendant', 55, 16.00, 8, TRUE, '/assets/products/dragon-blade-pendant.png'),
+  ('ornate-key-pendant', 'Ornate Key Pendant', 'Decorative gothic key pendant with a clean silver finish and premium accessory look.', 'Alloy key pendant, steel chain', 'Silver', 'Key pendant', 50, 13.00, 9, FALSE, '/assets/products/ornate-key-pendant.png')
 ON CONFLICT (slug) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description,

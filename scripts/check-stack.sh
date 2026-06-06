@@ -21,7 +21,7 @@ echo "Health endpoint OK"
 echo "Checking /products endpoint..."
 products_response="$(curl -fsS http://localhost:8080/products)"
 echo "$products_response"
-echo "$products_response" | grep -q '"name":"Crystal Guardian Pendant"'
+echo "$products_response" | grep -q '"name":"Crown Charm Chain"'
 echo "Products endpoint OK"
 
 echo "Checking database backups..."

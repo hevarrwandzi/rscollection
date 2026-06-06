@@ -140,8 +140,8 @@ function sendDatabaseError(res, error) {
 
 app.get("/api", (req, res) => {
   res.json({
-    shop: "Realm Relics",
-    message: "Fantasy accessories shop API.",
+    shop: "RS Collection",
+    message: "Anime and gaming accessories shop API.",
     endpoints: [
       "GET /products",
       "GET /products/:id",

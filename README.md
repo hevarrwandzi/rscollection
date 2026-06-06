@@ -1,6 +1,6 @@
-# Realm Relics Online Shop — DevOps Runbook
+# RS Collection Online Shop — DevOps Runbook
 
-Realm Relics is a small e-commerce web application for fantasy accessories. The app uses a Node.js/Express backend, static frontend assets, and PostgreSQL for product data.
+RS Collection is a small e-commerce web application for anime and gaming accessories. The app uses a Node.js/Express backend, static frontend assets, and PostgreSQL for product data.
 
 This repository is being used as a DevOps practice project: the application exists, and the operational work focuses on making it reproducible, containerized, healthy, and safe to run.
 
@@ -243,27 +243,37 @@ docker inspect --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{
 
 ## Logs
 
-View app logs:
+View all service logs:
+
+```bash
+docker compose logs
+```
+
+Follow all logs live:
+
+```bash
+docker compose logs -f
+```
+
+View one service:
+
+```bash
+docker compose logs app
+docker compose logs db
+docker compose logs nginx
+```
+
+Follow one service live:
 
 ```bash
 docker compose logs -f app
-```
-
-View database logs:
-
-```bash
-docker compose logs -f db
 ```
 
 View recent logs only:
 
 ```bash
 docker compose logs --tail=80 app
-```
-
-View Nginx logs:
-
-```bash
+docker compose logs --tail=80 db
 docker compose logs --tail=80 nginx
 ```
 
@@ -428,6 +438,41 @@ curl -X POST http://localhost:8080/products \
 ```
 
 ## Troubleshooting
+
+### `/health` fails or does not show database connected
+
+Start with the full stack check:
+
+```bash
+./scripts/check-stack.sh
+```
+
+Then inspect container health:
+
+```bash
+docker compose ps
+```
+
+Check the app and database logs:
+
+```bash
+docker compose logs --tail=80 app
+docker compose logs --tail=80 db
+```
+
+Confirm only Nginx is published to the host:
+
+```bash
+docker compose config | grep -A5 -n "ports:"
+```
+
+Common causes:
+
+- app cannot connect to PostgreSQL
+- wrong `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_HOST`, or `DB_PORT`
+- database container is unhealthy or still starting
+- stale database volume from an older schema
+- `/health` route changed but Compose/Nginx healthchecks were not updated
 
 ### Compose says the DB is not ready
 

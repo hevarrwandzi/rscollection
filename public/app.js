@@ -1,7 +1,7 @@
 const page = document.body.dataset.page || "storefront";
-const fallbackImage = "https://images.unsplash.com/photo-1602173574767-37ac01994b2a?auto=format&fit=crop&w=1000&q=80";
-const cartStorageKey = "realmRelicsCart";
-const adminTokenKey = "realmRelicsAdminToken";
+const fallbackImage = "/assets/products/charm-chain.png";
+const cartStorageKey = "rsCollectionCart";
+const adminTokenKey = "rsCollectionAdminToken";
 
 const productsGrid = document.getElementById("products-grid");
 const featuredGrid = document.getElementById("featured-grid");
@@ -99,6 +99,7 @@ function createProductCard(product) {
   const stockLine = fragment.querySelector(".stock-line");
   const detailsButton = fragment.querySelector(".details-button");
   const addButton = fragment.querySelector(".add-cart-button");
+  const quickOrderButton = fragment.querySelector(".quick-order-button");
   const stock = stockLabel(product);
 
   image.src = product.image_url || fallbackImage;
@@ -112,9 +113,11 @@ function createProductCard(product) {
   stockLine.textContent = stock.text;
   stockLine.dataset.tone = stock.tone;
   detailsButton.addEventListener("click", () => openProductDetail(product));
+  quickOrderButton?.addEventListener("click", () => openWhatsAppOrder(product));
   addButton.addEventListener("click", () => addToCart(product));
   addButton.disabled = Number(product.stock || 0) <= 0;
-  addButton.textContent = Number(product.stock || 0) <= 0 ? "Unavailable" : "Add to cart";
+  addButton.textContent = Number(product.stock || 0) <= 0 ? "Unavailable" : "Add";
+  if (quickOrderButton) quickOrderButton.disabled = Number(product.stock || 0) <= 0;
   return fragment;
 }
 
@@ -147,8 +150,8 @@ function openProductDetail(product) {
         <li><span>Size</span><strong>${escapeHTML(product.chain_length_cm)} cm</strong></li>
         <li><span>Availability</span><strong>${escapeHTML(stock.text)}</strong></li>
       </ul>
-      <button class="button primary detail-add" type="button" ${Number(product.stock || 0) <= 0 ? "disabled" : ""}>Add to cart</button>
-      <p class="fineprint">Original fantasy-inspired design. Not affiliated with any game, film, or anime franchise.</p>
+      <div class="detail-actions"><button class="button primary detail-add" type="button" ${Number(product.stock || 0) <= 0 ? "disabled" : ""}>Add to order list</button><button class="button whatsapp detail-whatsapp" type="button" ${Number(product.stock || 0) <= 0 ? "disabled" : ""}>Order on WhatsApp</button></div>
+      <p class="fineprint">RS Collection confirms price, delivery, and availability before final order confirmation.</p>
     </div>
   `;
   productDetail.querySelector(".detail-add").addEventListener("click", () => {
@@ -156,6 +159,7 @@ function openProductDetail(product) {
     productDialog.close();
     openCart();
   });
+  productDetail.querySelector(".detail-whatsapp")?.addEventListener("click", () => openWhatsAppOrder(product));
   productDialog.showModal();
 }
 
@@ -179,7 +183,7 @@ function renderCart() {
   if (!cart.length) {
     const empty = document.createElement("div");
     empty.className = "empty-state compact";
-    empty.textContent = "Your cart is empty. Add a relic from the catalog.";
+    empty.textContent = "Your order list is empty. Add a product from the catalog.";
     cartItems.appendChild(empty);
     return;
   }
@@ -211,9 +215,35 @@ function closeCart() {
 
 async function copyOrderSummary() {
   if (!cart.length) return setMessage(cartMessage, "Add at least one product first.", "error");
-  const lines = ["Realm Relics order request:", ...cart.map((item) => `- ${item.name} x${item.qty} (${formatPrice(item.price)} each)`), `Total: ${cartTotal.textContent}`];
+  const lines = buildOrderLines();
   await navigator.clipboard.writeText(lines.join("\n"));
-  setMessage(cartMessage, "Order summary copied. Send it to the seller/contact channel.", "success");
+  setMessage(cartMessage, "Order summary copied. Send it to RS Collection on WhatsApp or Instagram.", "success");
+}
+
+function buildOrderLines(singleProduct = null) {
+  if (singleProduct) {
+    return [
+      "Hi RS Collection, I want to order:",
+      `- ${singleProduct.name} (${formatPrice(singleProduct.price)})`,
+      `Availability: ${stockLabel(singleProduct).text}`,
+      "Please confirm delivery and payment details."
+    ];
+  }
+  return [
+    "Hi RS Collection, I want to order:",
+    ...cart.map((item) => `- ${item.name} x${item.qty} (${formatPrice(item.price)} each)`),
+    `Total: ${cartTotal?.textContent || ""}`,
+    "Please confirm availability, delivery, and payment details."
+  ];
+}
+
+function openWhatsAppOrder(product = null) {
+  if (!product && !cart.length) {
+    openCart();
+    return setMessage(cartMessage, "Add at least one product first.", "error");
+  }
+  const text = buildOrderLines(product).join("\n");
+  window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank", "noopener,noreferrer");
 }
 
 function buildQueryString(formData) {
@@ -233,7 +263,7 @@ function buildQueryString(formData) {
 async function loadProducts(queryString = "") {
   currentQueryString = queryString;
   const products = await requestJSON(`/products${queryString}`);
-  renderProducts(productsGrid, products, "No relics matched those filters.");
+  renderProducts(productsGrid, products, "No RS Collection products matched those filters.");
   if (resultsSummary) resultsSummary.textContent = `${products.length} product${products.length === 1 ? "" : "s"} shown`;
   renderInventory(products);
   updateAdminStats(products);
@@ -241,7 +271,7 @@ async function loadProducts(queryString = "") {
 
 async function loadFeatured() {
   const products = await requestJSON("/featured-products");
-  renderProducts(featuredGrid, products, "No featured relics right now.");
+  renderProducts(featuredGrid, products, "No featured RS Collection products right now.");
 }
 
 function normalizeProductPayload(form) {
@@ -270,7 +300,7 @@ function resetAdminForm() {
   submitButton.textContent = "Create product";
   cancelEditButton.classList.add("hidden");
   adminTitle.textContent = "Create product";
-  adminSubtitle.textContent = "Manage inventory from this private workspace. Hosting and DevOps stay separate.";
+  adminSubtitle.textContent = "Manage RS Collection inventory from this private workspace. Hosting and DevOps stay separate.";
 }
 
 function loadProductIntoForm(product) {
@@ -351,6 +381,7 @@ function initStorefront() {
   drawerBackdrop?.addEventListener("click", closeCart);
   document.getElementById("contact-cart")?.addEventListener("click", openCart);
   document.getElementById("copy-order")?.addEventListener("click", copyOrderSummary);
+  document.getElementById("whatsapp-link")?.addEventListener("click", (event) => { event.preventDefault(); openWhatsAppOrder(); });
   document.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", () => productDialog?.close()));
   renderCart();
   Promise.all([loadProducts(), loadFeatured()]).catch((error) => { console.error(error); if (resultsSummary) resultsSummary.textContent = "Could not load products"; });
