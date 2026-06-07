@@ -10,7 +10,7 @@ This repository is being used as a DevOps practice project: the application exis
 - **Backend:** Express
 - **Database:** PostgreSQL 17
 - **Frontend:** Static HTML/CSS/JavaScript served by Express
-- **Reverse proxy:** Nginx 1.27 Alpine
+- **Reverse proxy / HTTPS:** Caddy 2 Alpine with automatic Let's Encrypt TLS
 - **Containerization:** Docker + Docker Compose
 
 ## Architecture
@@ -18,9 +18,9 @@ This repository is being used as a DevOps practice project: the application exis
 ```text
 Browser
   |
-  | HTTP :8080
+  | HTTPS :443 / HTTP :80 redirect
   v
-nginx container — reverse proxy
+caddy container — reverse proxy + automatic HTTPS
   |
   | Compose internal network: app:3000
   v
@@ -31,14 +31,14 @@ app container — Node.js / Express API + static frontend
 db container — PostgreSQL 17
   |
   v
-Docker named volume: aa_db_data / db_data
+Docker named volume: db_data
 ```
 
 ## DevOps Work Implemented
 
 - Dockerized the Node.js application.
-- Added Docker Compose with separate `nginx`, `app`, and `db` services.
-- Added Nginx as the public entrypoint on host port `8080`, proxying to the app container on the internal Compose network.
+- Added Docker Compose with separate `caddy`, `app`, and `db` services.
+- Added Caddy as the public entrypoint on host ports `80` and `443`, proxying to the app container on the internal Compose network and managing TLS certificates automatically.
 - Added PostgreSQL named volume for persistent database data.
 - Added `init.sql` database bootstrap for product schema and seed data.
 - Added `.env.example` and kept real `.env` out of Git.
@@ -49,8 +49,8 @@ Docker named volume: aa_db_data / db_data
   - `npm ci --omit=dev`
   - non-root `node` runtime user
 - Added DB-backed Express health endpoints at `/health` and `/api/health`.
-- Added Compose healthchecks for Nginx, app, and database.
-- Added `depends_on.condition: service_healthy` so the app waits for PostgreSQL readiness and Nginx waits for app readiness.
+- Added Compose healthchecks for the app and database, with Caddy depending on a healthy app before starting.
+- Added `depends_on.condition: service_healthy` so the app waits for PostgreSQL readiness and Caddy waits for app readiness.
 - Added restart policies with `restart: unless-stopped`.
 - Fixed npm audit vulnerabilities; current expected result is `found 0 vulnerabilities`.
 
@@ -85,6 +85,7 @@ DB_HOST=db
 DB_PORT=5432
 ADMIN_TOKEN=change-me
 PORT=3000
+CADDY_SITE=:80
 ```
 
 Variable purpose:
@@ -96,12 +97,40 @@ Variable purpose:
 - `DB_PORT` - PostgreSQL port, usually `5432`.
 - `ADMIN_TOKEN` - token required for admin product create/update/delete routes.
 - `PORT` - app port inside the container, usually `3000`.
+- `CADDY_SITE` - Caddy site address. Use `:80` for local/CI and `rscollection.online, www.rscollection.online` on production.
 
 Notes:
 
 - `.env` must stay private and must not be committed.
 - `.env.example` is safe to commit because it contains placeholders only.
 - Use strong, unique values for `DB_PASSWORD` and `ADMIN_TOKEN` on a real server.
+
+## Production HTTPS Deployment
+
+Production runs on AWS EC2 at:
+
+```text
+https://rscollection.online
+https://www.rscollection.online
+```
+
+Production `.env` should include:
+
+```env
+CADDY_SITE=rscollection.online, www.rscollection.online
+```
+
+Caddy automatically obtains and renews Let's Encrypt certificates. HTTP requests on port `80` redirect to HTTPS on port `443`.
+
+Redeploy on the EC2 host from the repository directory:
+
+```bash
+git pull
+docker compose down --remove-orphans
+docker compose up -d --build
+docker compose ps
+curl -fsS https://rscollection.online/health
+```
 
 ## Run Locally with Docker Compose
 
@@ -126,21 +155,21 @@ docker compose ps
 Expected state:
 
 ```text
-aa-nginx-1   Up ... (healthy)   0.0.0.0:8080->80/tcp
-aa-app-1     Up ... (healthy)   3000/tcp
-aa-db-1      Up ... (healthy)   5432/tcp
+rscollection-caddy-1   Up ...   0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp
+rscollection-app-1     Up ... (healthy)   3000/tcp
+rscollection-db-1      Up ... (healthy)   5432/tcp
 ```
 
 Open the site:
 
 ```text
-http://localhost:8080
+http://localhost
 ```
 
 Admin page:
 
 ```text
-http://localhost:8080/admin
+http://localhost/admin
 ```
 
 ## Smoke Tests
@@ -154,11 +183,11 @@ Run the full local stack validation script:
 The script verifies:
 
 - Docker Compose config is valid
-- Nginx, app, and database containers are healthy
+- Caddy, app, and database containers are running/healthy
 - `/health` returns database connected
 - `/products` returns product data
 - at least one database backup exists
-- only Nginx is publicly exposed
+- only Caddy is publicly exposed
 - production dependencies have no known audit vulnerabilities
 
 Expected final output:
@@ -172,26 +201,26 @@ Manual checks are also useful when debugging individual endpoints.
 Check API metadata:
 
 ```bash
-curl -fsS http://localhost:8080/api
+curl -fsS http://localhost/api
 ```
 
-Check DB-backed health through Nginx:
+Check DB-backed health through Caddy:
 
 ```bash
-curl -fsS http://localhost:8080/health
-curl -fsS http://localhost:8080/api/health
+curl -fsS http://localhost/health
+curl -fsS http://localhost/api/health
 ```
 
 Check products:
 
 ```bash
-curl -fsS http://localhost:8080/products
+curl -fsS http://localhost/products
 ```
 
 Check featured products:
 
 ```bash
-curl -fsS http://localhost:8080/featured-products
+curl -fsS http://localhost/featured-products
 ```
 
 Expected result: JSON responses with no 500 errors.
@@ -212,10 +241,10 @@ node -e "require('http').get('http://localhost:3000/health', res => process.exit
 
 Why Node instead of curl/wget? The app image does not install curl or wget, and Node is already available.
 
-The Nginx healthcheck requests `/health` through the reverse proxy:
+Caddy proxies `/health` through to the app container:
 
 ```bash
-curl -f http://localhost:80/health
+curl -fsS http://localhost/health
 ```
 
 Both `/health` and `/api/health` verify PostgreSQL connectivity by running a lightweight database query. A healthy response looks like:
@@ -238,7 +267,7 @@ docker compose ps
 Or directly:
 
 ```bash
-docker inspect --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' aa-nginx-1 aa-app-1 aa-db-1
+docker inspect --format '{{.Name}} {{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' rscollection-caddy-1 rscollection-app-1 rscollection-db-1
 ```
 
 ## Logs
@@ -260,7 +289,7 @@ View one service:
 ```bash
 docker compose logs app
 docker compose logs db
-docker compose logs nginx
+docker compose logs caddy
 ```
 
 Follow one service live:
@@ -274,7 +303,7 @@ View recent logs only:
 ```bash
 docker compose logs --tail=80 app
 docker compose logs --tail=80 db
-docker compose logs --tail=80 nginx
+docker compose logs --tail=80 caddy
 ```
 
 ## Stop / Start / Rebuild
@@ -389,8 +418,8 @@ After restoring, check the app:
 
 ```bash
 docker compose ps
-curl -fsS http://localhost:8080/health
-curl -fsS http://localhost:8080/products
+curl -fsS http://localhost/health
+curl -fsS http://localhost/products
 ```
 
 ## Dependency Security Check
@@ -419,7 +448,7 @@ docker compose up -d
 Admin routes require a bearer token:
 
 ```bash
-curl -X POST http://localhost:8080/products \
+curl -X POST http://localhost/products \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ${ADMIN_TOKEN}" \
   -d '{
@@ -460,7 +489,7 @@ docker compose logs --tail=80 app
 docker compose logs --tail=80 db
 ```
 
-Confirm only Nginx is published to the host:
+Confirm only Caddy is published to the host:
 
 ```bash
 docker compose config | grep -A5 -n "ports:"
@@ -472,7 +501,7 @@ Common causes:
 - wrong `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `DB_HOST`, or `DB_PORT`
 - database container is unhealthy or still starting
 - stale database volume from an older schema
-- `/health` route changed but Compose/Nginx healthchecks were not updated
+- `/health` route changed but Compose/Caddy routing were not updated
 
 ### Compose says the DB is not ready
 
@@ -515,7 +544,7 @@ docker compose up -d --build
 
 ### Port 3000 already in use
 
-The app container exposes port `3000` only inside the Docker Compose network. It is not published to the host. The public local entrypoint is Nginx on port `8080`.
+The app container exposes port `3000` only inside the Docker Compose network. It is not published to the host. The public entrypoint is Caddy on ports `80` and `443`.
 
 If you manually publish app port `3000` later and hit a conflict, find the process:
 
@@ -534,19 +563,19 @@ ports:
 
 This project does not publish PostgreSQL to the host. That is intentional. The app connects to `db:5432` over the Docker Compose internal network.
 
-### Port 8080 already in use
+### Port 80 or 443 already in use
 
-Nginx publishes host port `8080`. If Compose fails because the port is already allocated, find the conflicting process:
+Caddy publishes host ports `80` and `443`. If Compose fails because a port is already allocated, find the conflicting process:
 
 ```bash
-ss -ltnp | grep ':8080'
+ss -ltnp | grep -E ':(80|443)'
 ```
 
 Then either stop the conflicting process or change the host port mapping in Compose:
 
 ```yaml
 ports:
-  - "8081:80"
+  - "8081:80"  # local-only temporary override; production must use 80/443 for HTTPS
 ```
 
 ## Production Notes / Next Improvements
@@ -570,7 +599,7 @@ This project demonstrates operational ownership of an e-commerce app:
 - database service orchestration
 - environment variable management
 - healthchecks and startup ordering
-- Nginx reverse proxy in front of the app container
+- Caddy reverse proxy with automatic HTTPS in front of the app container
 - restart policies
 - Docker build optimization
 - dependency vulnerability cleanup
@@ -578,4 +607,4 @@ This project demonstrates operational ownership of an e-commerce app:
 
 A concise way to describe this project:
 
-> I took an existing Node.js/PostgreSQL online shop and made it reproducible and safer to operate with Docker Compose, PostgreSQL bootstrapping, environment configuration, DB-backed healthchecks, Nginx reverse proxying, restart policies, non-root container runtime, npm audit cleanup, and a practical runbook.
+> I took an existing Node.js/PostgreSQL online shop and made it reproducible and safer to operate with Docker Compose, PostgreSQL bootstrapping, environment configuration, DB-backed healthchecks, Caddy reverse proxying and automatic HTTPS, restart policies, non-root container runtime, npm audit cleanup, and a practical runbook.

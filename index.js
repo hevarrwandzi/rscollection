@@ -26,7 +26,7 @@ const pool = new Pool({
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
 });
-// Health check endpoint used by Docker/Nginx/monitoring.
+// Health check endpoint used by Docker/Caddy/monitoring.
 // It verifies both the Node process and PostgreSQL connectivity.
 async function healthCheck(req, res) {
   try {
