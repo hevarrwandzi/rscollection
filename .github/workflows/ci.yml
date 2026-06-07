@@ -62,7 +62,7 @@ jobs:
 
       - name: Check products API
         run: |
-          curl -fsS http://localhost:8080/api/products | grep -q "Crown Charm Chain"
+          curl -fsS http://localhost:8080/products | grep -q "Crown Charm Chain"
 
       - name: Stop stack
         if: always()
