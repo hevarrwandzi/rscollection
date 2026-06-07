@@ -1,7 +1,6 @@
 services:
   app:
     build: .
-   
     restart: unless-stopped
     env_file:
       - .env
@@ -21,7 +20,6 @@ services:
       retries: 3
       start_period: 20s
 
-
   db:
     image: postgres:17
     restart: unless-stopped
@@ -29,7 +27,6 @@ services:
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
-     
     volumes:
       - db_data:/var/lib/postgresql/data
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
@@ -39,16 +36,17 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-   
 
   caddy:
     image: caddy:2-alpine
-    restart: always
+    restart: unless-stopped
+    env_file:
+      - .env
     ports:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -56,15 +54,6 @@ services:
         condition: service_healthy
 
 volumes:
-  postgres_data:
+  db_data:
   caddy_data:
   caddy_config:
-    depends_on:
-      app:
-        condition: service_healthy
-    restart: unless-stopped
-
-volumes:
-  db_data:
-  
-

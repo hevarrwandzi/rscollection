@@ -1,3 +1,6 @@
-rscollection.online, www.rscollection.online {
+# CADDY_SITE comes from .env.
+# Local/CI default is :80. Production should set:
+# CADDY_SITE=rscollection.online, www.rscollection.online
+{$CADDY_SITE::80} {
     reverse_proxy app:3000
 }
