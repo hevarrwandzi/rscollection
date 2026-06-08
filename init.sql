@@ -11,16 +11,20 @@ CREATE TABLE IF NOT EXISTS products (
   stock INTEGER NOT NULL DEFAULT 0 CHECK (stock >= 0),
   featured BOOLEAN NOT NULL DEFAULT FALSE,
   image_url TEXT,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('draft', 'active', 'archived', 'sold_out')),
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-INSERT INTO products (slug, name, description, material, color, style, chain_length_cm, price, stock, featured, image_url)
+ALTER TABLE products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
+UPDATE products SET status = 'active' WHERE status IS NULL OR status = '';
+
+INSERT INTO products (slug, name, description, material, color, style, chain_length_cm, price, stock, featured, image_url, status)
 VALUES
-  ('crown-charm-chain', 'Crown Charm Chain', 'Multi-charm necklace with colored beads, crown detail, and a playful anime accessory feel.', 'Alloy chain, mixed charms, beads', 'Silver / multicolor', 'Charm chain', 45, 18.00, 10, TRUE, '/assets/products/charm-chain.png'),
-  ('silver-wolf-pendant', 'Silver Wolf Pendant', 'Sharp silver pendant with fantasy crest energy for dark outfits and collector styling.', 'Alloy pendant, steel chain', 'Silver', 'Pendant', 50, 14.00, 12, TRUE, '/assets/products/sword-pendant.png'),
-  ('skeleton-key-necklace', 'Skeleton Key Necklace', 'Clean silver key pendant for anime-inspired outfits, daily wear, or gifting.', 'Alloy key pendant, steel chain', 'Silver', 'Key pendant', 50, 12.00, 15, TRUE, '/assets/products/key-pendant.png'),
-  ('dragon-blade-pendant', 'Dragon Blade Pendant', 'Long blade-shaped pendant with detailed silver finish and dark fantasy energy.', 'Alloy pendant, steel chain', 'Silver', 'Blade pendant', 55, 16.00, 8, TRUE, '/assets/products/dragon-blade-pendant.png'),
-  ('ornate-key-pendant', 'Ornate Key Pendant', 'Decorative gothic key pendant with a clean silver finish and premium accessory look.', 'Alloy key pendant, steel chain', 'Silver', 'Key pendant', 50, 13.00, 9, FALSE, '/assets/products/ornate-key-pendant.png')
+  ('crown-charm-chain', 'Crown Charm Chain', 'Multi-charm necklace with colored beads, crown detail, and a playful anime accessory feel.', 'Alloy chain, mixed charms, beads', 'Silver / multicolor', 'Charm chain', 45, 18.00, 10, TRUE, '/assets/products/charm-chain.png', 'active'),
+  ('silver-wolf-pendant', 'Silver Wolf Pendant', 'Sharp silver pendant with fantasy crest energy for dark outfits and collector styling.', 'Alloy pendant, steel chain', 'Silver', 'Pendant', 50, 14.00, 12, TRUE, '/assets/products/sword-pendant.png', 'active'),
+  ('skeleton-key-necklace', 'Skeleton Key Necklace', 'Clean silver key pendant for anime-inspired outfits, daily wear, or gifting.', 'Alloy key pendant, steel chain', 'Silver', 'Key pendant', 50, 12.00, 15, TRUE, '/assets/products/key-pendant.png', 'active'),
+  ('dragon-blade-pendant', 'Dragon Blade Pendant', 'Long blade-shaped pendant with detailed silver finish and dark fantasy energy.', 'Alloy pendant, steel chain', 'Silver', 'Blade pendant', 55, 16.00, 8, TRUE, '/assets/products/dragon-blade-pendant.png', 'active'),
+  ('ornate-key-pendant', 'Ornate Key Pendant', 'Decorative gothic key pendant with a clean silver finish and premium accessory look.', 'Alloy key pendant, steel chain', 'Silver', 'Key pendant', 50, 13.00, 9, FALSE, '/assets/products/ornate-key-pendant.png', 'active')
 ON CONFLICT (slug) DO UPDATE SET
   name = EXCLUDED.name,
   description = EXCLUDED.description,
@@ -31,4 +35,5 @@ ON CONFLICT (slug) DO UPDATE SET
   price = EXCLUDED.price,
   stock = EXCLUDED.stock,
   featured = EXCLUDED.featured,
-  image_url = EXCLUDED.image_url;
+  image_url = EXCLUDED.image_url,
+  status = EXCLUDED.status;

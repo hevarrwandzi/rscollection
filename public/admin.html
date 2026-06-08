@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>RS Collection Admin | Product Management</title>
+    <title>RSCollection Admin | Product Management</title>
     <meta name="robots" content="noindex,nofollow" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -13,7 +13,7 @@
   <body data-page="admin">
     <div class="ambient ambient-one"></div>
     <header class="site-header admin-header">
-      <a class="brand" href="/" aria-label="Back to storefront"><span class="brand-mark">RS</span><span><strong>RS Collection</strong><small>Admin workspace</small></span></a>
+      <a class="brand" href="/" aria-label="Back to storefront"><span class="brand-mark">RS</span><span><strong>RSCollection</strong><small>Admin workspace</small></span></a>
       <nav class="nav-links"><a href="/">View storefront</a></nav>
     </header>
 
@@ -34,12 +34,14 @@
         <aside class="admin-sidebar">
           <p class="eyebrow">Admin dashboard</p>
           <h2 id="admin-title">Create product</h2>
-          <p id="admin-subtitle" class="muted">Manage RS Collection inventory from this private workspace. Hosting and DevOps stay separate.</p>
+          <p id="admin-subtitle" class="muted">Manage RSCollection inventory from this private workspace. Hosting and DevOps stay separate.</p>
           <div class="admin-stats">
             <div><span>Total value</span><strong id="stat-value">$0</strong></div>
             <div><span>Low stock</span><strong id="stat-lowstock">0</strong></div>
+            <div><span>Active</span><strong id="stat-active">0</strong></div>
+            <div><span>Draft/archive</span><strong id="stat-hidden">0</strong></div>
           </div>
-          <div class="admin-note"><strong>Workflow</strong><ol><li>Create products with unique slugs.</li><li>Edit inventory rows to update items.</li><li>Deletes require token authorization.</li></ol></div>
+          <div class="admin-note"><strong>Workflow</strong><ol><li>Create products with unique slugs.</li><li>Use status to draft, publish, hide, or mark sold out.</li><li>Use quick stock buttons for day-to-day inventory changes.</li></ol></div>
         </aside>
 
         <div class="admin-workspace">
@@ -59,7 +61,11 @@
               <label><span>Price</span><input name="price" type="number" min="0" step="0.01" placeholder="18.00" required /></label>
               <label><span>Stock</span><input name="stock" type="number" min="0" step="1" placeholder="10" value="0" /></label>
             </div>
-            <label><span>Image URL</span><input name="image_url" type="text" placeholder="/assets/products/charm-chain.png" /></label>
+            <label><span>Status</span><select name="status"><option value="active">Active / visible</option><option value="draft">Draft / hidden</option><option value="sold_out">Sold out / hidden</option><option value="archived">Archived / hidden</option></select></label>
+            <div class="image-url-row">
+              <label><span>Image URL</span><input name="image_url" type="text" placeholder="/assets/products/charm-chain.png" /></label>
+              <div class="image-preview" aria-label="Product image preview"><img id="image-preview" src="/assets/products/charm-chain.png" alt="Product preview" /></div>
+            </div>
             <label><span>Description</span><textarea name="description" placeholder="Describe the item, vibe, material, and outfit/cosplay use." required></textarea></label>
             <div class="form-footer">
               <label class="check-card inline"><input name="featured" type="checkbox" /><span>Mark as featured</span></label>
@@ -69,6 +75,11 @@
           <p id="form-message" class="form-message" role="status"></p>
           <div class="inventory-panel">
             <div class="section-head tight"><div><p class="eyebrow">Inventory</p><h3>Product management</h3></div><span id="inventory-count" class="pill">0 items</span></div>
+            <form id="admin-inventory-controls" class="admin-inventory-controls" aria-label="Inventory controls">
+              <label><span>Search</span><input id="admin-inventory-search" type="search" placeholder="Search name, slug, material..." /></label>
+              <label><span>Status</span><select id="admin-status-filter"><option value="">All statuses</option><option value="active">Active</option><option value="draft">Draft</option><option value="sold_out">Sold out</option><option value="archived">Archived</option></select></label>
+              <label><span>Sort</span><select id="admin-sort"><option value="newest">Newest first</option><option value="stock-asc">Lowest stock</option><option value="price-desc">Highest price</option><option value="name-asc">Name A-Z</option></select></label>
+            </form>
             <div id="inventory-list" class="inventory-list"></div>
           </div>
         </div>

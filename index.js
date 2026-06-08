@@ -65,26 +65,38 @@ const productSelect = `
     stock,
     featured,
     image_url,
+    COALESCE(status, 'active') AS status,
     created_at
   FROM products
 `;
 
-function requireAdmin(req, res, next) {
+function hasValidAdminToken(req) {
   const expectedToken = process.env.ADMIN_TOKEN;
-  if (!expectedToken) {
-    return res.status(500).json({ error: "Admin protection is not configured" });
-  }
+  if (!expectedToken) return false;
 
   const authHeader = req.get("authorization") || "";
   const suppliedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   const expected = Buffer.from(expectedToken);
   const supplied = Buffer.from(suppliedToken);
 
-  if (expected.length !== supplied.length || !crypto.timingSafeEqual(expected, supplied)) {
+  return expected.length === supplied.length && crypto.timingSafeEqual(expected, supplied);
+}
+
+function requireAdmin(req, res, next) {
+  if (!process.env.ADMIN_TOKEN) {
+    return res.status(500).json({ error: "Admin protection is not configured" });
+  }
+
+  if (!hasValidAdminToken(req)) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
   return next();
+}
+
+async function ensureDatabaseSchema() {
+  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'");
+  await pool.query("UPDATE products SET status = 'active' WHERE status IS NULL OR status = ''");
 }
 
 function validateProductPayload(body) {
@@ -100,6 +112,7 @@ function validateProductPayload(body) {
     stock: Number(body.stock ?? 0),
     featured: Boolean(body.featured),
     image_url: body.image_url?.toString().trim() || null,
+    status: body.status?.toString().trim() || "active",
   };
 
   if (
@@ -115,6 +128,10 @@ function validateProductPayload(body) {
     };
   }
 
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(payload.slug)) {
+    return { error: "slug must use lowercase letters, numbers, and hyphens only" };
+  }
+
   if (!Number.isFinite(payload.chain_length_cm) || payload.chain_length_cm <= 0) {
     return { error: "chain_length_cm must be a positive number" };
   }
@@ -123,11 +140,37 @@ function validateProductPayload(body) {
     return { error: "price must be a valid non-negative number" };
   }
 
-  if (!Number.isFinite(payload.stock) || payload.stock < 0) {
-    return { error: "stock must be a valid non-negative number" };
+  if (!Number.isInteger(payload.stock) || payload.stock < 0) {
+    return { error: "stock must be a non-negative integer" };
+  }
+
+  const allowedStatuses = new Set(["draft", "active", "archived", "sold_out"]);
+  if (!allowedStatuses.has(payload.status)) {
+    return { error: "status must be one of draft, active, archived, or sold_out" };
+  }
+
+  if (payload.status === "active" && payload.stock === 0) {
+    payload.status = "sold_out";
   }
 
   return { payload };
+}
+
+function buildProductVisibilityWhere() {
+  return "status = 'active' AND stock > 0";
+}
+
+function productSortClause(sort) {
+  switch (sort) {
+    case "price-asc":
+      return "price ASC, featured DESC, created_at DESC";
+    case "price-desc":
+      return "price DESC, featured DESC, created_at DESC";
+    case "name-asc":
+      return "name ASC";
+    default:
+      return "featured DESC, created_at DESC";
+  }
 }
 
 function sendDatabaseError(res, error) {
@@ -140,7 +183,7 @@ function sendDatabaseError(res, error) {
 
 app.get("/api", (req, res) => {
   res.json({
-    shop: "RS Collection",
+    shop: "RSCollection",
     message: "Anime and gaming accessories shop API.",
     endpoints: [
       "GET /products",
@@ -148,6 +191,7 @@ app.get("/api", (req, res) => {
       "GET /featured-products",
       "POST /products (admin token required)",
       "PUT /products/:id (admin token required)",
+      "PATCH /products/:id/stock (admin token required)",
       "DELETE /products/:id (admin token required)",
     ],
   });
@@ -155,9 +199,17 @@ app.get("/api", (req, res) => {
 
 app.get("/products", async (req, res) => {
   try {
-    const { featured, style, maxPrice, q } = req.query;
+    const { featured, style, maxPrice, q, includeAll, sort } = req.query;
     const conditions = [];
     const values = [];
+
+    if (includeAll === "true") {
+      if (!hasValidAdminToken(req)) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+    } else {
+      conditions.push(buildProductVisibilityWhere());
+    }
 
     if (featured === "true") {
       values.push(true);
@@ -190,7 +242,7 @@ app.get("/products", async (req, res) => {
     const result = await pool.query(
       `${productSelect}
        ${whereClause}
-       ORDER BY featured DESC, created_at DESC`,
+       ORDER BY ${productSortClause(sort)}`,
       values
     );
 
@@ -205,7 +257,7 @@ app.get("/featured-products", async (req, res) => {
   try {
     const result = await pool.query(
       `${productSelect}
-       WHERE featured = true
+       WHERE featured = true AND ${buildProductVisibilityWhere()}
        ORDER BY created_at DESC`
     );
 
@@ -221,8 +273,9 @@ app.get("/products/:id", async (req, res) => {
     const { id } = req.params;
     const result = await pool.query(
       `${productSelect}
-       WHERE id = $1`,
-      [id]
+       WHERE id = $1
+         AND (${buildProductVisibilityWhere()} OR $2 = true)`,
+      [id, hasValidAdminToken(req)]
     );
 
     if (result.rows.length === 0) {
@@ -246,9 +299,9 @@ app.post("/products", requireAdmin, async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO products (
-        slug, name, description, material, color, style, chain_length_cm, price, stock, featured, image_url
+        slug, name, description, material, color, style, chain_length_cm, price, stock, featured, image_url, status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *`,
       [
         payload.slug,
@@ -262,6 +315,7 @@ app.post("/products", requireAdmin, async (req, res) => {
         payload.stock,
         payload.featured,
         payload.image_url,
+        payload.status,
       ]
     );
 
@@ -293,8 +347,9 @@ app.put("/products/:id", requireAdmin, async (req, res) => {
            price = $8,
            stock = $9,
            featured = $10,
-           image_url = $11
-       WHERE id = $12
+           image_url = $11,
+           status = $12
+       WHERE id = $13
        RETURNING *`,
       [
         payload.slug,
@@ -308,6 +363,7 @@ app.put("/products/:id", requireAdmin, async (req, res) => {
         payload.stock,
         payload.featured,
         payload.image_url,
+        payload.status,
         id,
       ]
     );
@@ -323,13 +379,43 @@ app.put("/products/:id", requireAdmin, async (req, res) => {
   }
 });
 
+app.patch("/products/:id/stock", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const stock = Number(req.body.stock);
+
+    if (!Number.isInteger(stock) || stock < 0) {
+      return res.status(400).json({ error: "stock must be a non-negative integer" });
+    }
+
+    const result = await pool.query(
+      `UPDATE products
+       SET stock = $1,
+           status = CASE WHEN $1 = 0 AND status = 'active' THEN 'sold_out' ELSE status END
+       WHERE id = $2
+       RETURNING *`,
+      [stock, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Failed to update stock:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.delete("/products/:id", requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
     const result = await pool.query(
-      `DELETE FROM products
+      `UPDATE products
+       SET status = 'archived', featured = false
        WHERE id = $1
-       RETURNING id, name`,
+       RETURNING id, name, status`,
       [id]
     );
 
@@ -337,7 +423,7 @@ app.delete("/products/:id", requireAdmin, async (req, res) => {
       return res.status(404).json({ error: "Product not found" });
     }
 
-    res.json({ message: `Deleted ${result.rows[0].name}`, product: result.rows[0] });
+    res.json({ message: `Archived ${result.rows[0].name}`, product: result.rows[0] });
   } catch (error) {
     console.error("Failed to delete product:", error.message);
     res.status(500).json({ error: "Internal server error" });
@@ -354,6 +440,22 @@ app.use((req, res) => {
 
 const PORT = 3000;
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+if (require.main === module) {
+  ensureDatabaseSchema()
+    .then(() => {
+      app.listen(PORT, () => {
+        console.log(`Server running on port ${PORT}`);
+      });
+    })
+    .catch((error) => {
+      console.error("Failed to prepare database schema:", error);
+      process.exit(1);
+    });
+}
+
+module.exports = {
+  app,
+  validateProductPayload,
+  buildProductVisibilityWhere,
+  productSortClause,
+};
