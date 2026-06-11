@@ -18,6 +18,33 @@ CREATE TABLE IF NOT EXISTS products (
 ALTER TABLE products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
 UPDATE products SET status = 'active' WHERE status IS NULL OR status = '';
 
+CREATE TABLE IF NOT EXISTS orders (
+  id SERIAL PRIMARY KEY,
+  customer_name TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  city TEXT NOT NULL,
+  notes TEXT,
+  admin_note TEXT,
+  priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal', 'priority')),
+  total_price NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (total_price >= 0),
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'confirmed', 'cancelled', 'fulfilled')),
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_note TEXT;
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal';
+UPDATE orders SET priority = 'normal' WHERE priority IS NULL OR priority = '';
+
+CREATE TABLE IF NOT EXISTS order_items (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  product_name TEXT NOT NULL,
+  unit_price NUMERIC(10,2) NOT NULL CHECK (unit_price >= 0),
+  quantity INTEGER NOT NULL CHECK (quantity > 0),
+  line_total NUMERIC(10,2) NOT NULL CHECK (line_total >= 0)
+);
+
 INSERT INTO products (slug, name, description, material, color, style, chain_length_cm, price, stock, featured, image_url, status)
 VALUES
   ('crown-charm-chain', 'Crown Charm Chain', 'Multi-charm necklace with colored beads, crown detail, and a playful anime accessory feel.', 'Alloy chain, mixed charms, beads', 'Silver / multicolor', 'Charm chain', 45, 18.00, 10, TRUE, '/assets/products/charm-chain.png', 'active'),

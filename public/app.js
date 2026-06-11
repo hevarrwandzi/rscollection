@@ -33,11 +33,25 @@ const adminInventorySearch = document.getElementById("admin-inventory-search");
 const adminStatusFilter = document.getElementById("admin-status-filter");
 const adminSort = document.getElementById("admin-sort");
 const imagePreview = document.getElementById("image-preview");
+const orderRequestForm = document.getElementById("order-request-form");
+const ordersList = document.getElementById("orders-list");
+const ordersCount = document.getElementById("orders-count");
+const orderStatusFilter = document.getElementById("order-status-filter");
+const orderPriorityFilter = document.getElementById("order-priority-filter");
+const orderSearch = document.getElementById("order-search");
+const orderSort = document.getElementById("order-sort");
+const statOrdersNew = document.getElementById("stat-orders-new");
+const statOrdersPending = document.getElementById("stat-orders-pending");
+const statOrdersConfirmed = document.getElementById("stat-orders-confirmed");
+const statOrdersPriority = document.getElementById("stat-orders-priority");
+const statOrdersFulfilled = document.getElementById("stat-orders-fulfilled");
+const lowStockList = document.getElementById("low-stock-list");
 
 let currentQueryString = "";
 let editingProductId = null;
 let cart = readCart();
 let adminProducts = [];
+let adminOrders = [];
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -230,6 +244,45 @@ async function copyOrderSummary() {
   setMessage(cartMessage, "Order summary copied. Send it to RSCollection on WhatsApp or Instagram.", "success");
 }
 
+function normalizeOrderPayload(form) {
+  const formData = new FormData(form);
+  return {
+    customer_name: formData.get("customer_name")?.toString().trim(),
+    phone: formData.get("phone")?.toString().trim(),
+    city: formData.get("city")?.toString().trim(),
+    notes: formData.get("notes")?.toString().trim(),
+    items: cart.map((item) => ({ product_id: item.id, quantity: item.qty })),
+  };
+}
+
+async function submitOrderRequest(event) {
+  event.preventDefault();
+  if (!cart.length) {
+    return setMessage(cartMessage, "Add at least one product before sending an order request.", "error");
+  }
+
+  const submitButton = document.getElementById("submit-order");
+  submitButton.disabled = true;
+  setMessage(cartMessage, "Sending your order request...", "neutral");
+
+  try {
+    const result = await requestJSON("/orders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(normalizeOrderPayload(orderRequestForm)),
+    });
+
+    cart = [];
+    saveCart();
+    orderRequestForm.reset();
+    setMessage(cartMessage, `${result.message} Request #${result.order.id}.`, "success");
+  } catch (error) {
+    setMessage(cartMessage, error.message, "error");
+  } finally {
+    submitButton.disabled = false;
+  }
+}
+
 function buildOrderLines(singleProduct = null) {
   if (singleProduct) {
     return [
@@ -299,6 +352,7 @@ function applyAdminInventoryFilters(products) {
 function refreshAdminInventory() {
   renderInventory(applyAdminInventoryFilters(adminProducts));
   updateAdminStats(adminProducts);
+  renderLowStockAlerts(adminProducts);
 }
 
 async function loadProducts(queryString = "") {
@@ -311,6 +365,42 @@ async function loadProducts(queryString = "") {
 async function loadAdminProducts() {
   adminProducts = await adminRequestJSON("/products?includeAll=true");
   refreshAdminInventory();
+}
+
+async function loadAdminOrders() {
+  adminOrders = await adminRequestJSON("/orders");
+  refreshAdminOrders();
+}
+
+function refreshAdminOrders() {
+  renderOrders(applyOrderFilters(adminOrders));
+  updateOrderStats(adminOrders);
+}
+
+function applyOrderFilters(orders) {
+  const status = orderStatusFilter?.value || "";
+  const priority = orderPriorityFilter?.value || "";
+  const term = (orderSearch?.value || "").trim().toLowerCase().replace(/^#/, "");
+  const sort = orderSort?.value || "newest";
+
+  return orders
+    .filter((order) => {
+      const haystack = [order.id, order.customer_name, order.phone, order.city, order.notes, order.admin_note]
+        .join(" ")
+        .toLowerCase();
+      return (!status || order.status === status)
+        && (!priority || (order.priority || "normal") === priority)
+        && (!term || haystack.includes(term));
+    })
+    .sort((a, b) => {
+      if (sort === "oldest") return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+      if (sort === "total-desc") return Number(b.total_price || 0) - Number(a.total_price || 0);
+      if (sort === "priority") {
+        const priorityDiff = Number((b.priority || "normal") === "priority") - Number((a.priority || "normal") === "priority");
+        if (priorityDiff) return priorityDiff;
+      }
+      return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    });
 }
 
 async function loadFeatured() {
@@ -398,10 +488,17 @@ function renderInventory(products) {
     edit.className = "button ghost small"; edit.type = "button"; edit.textContent = "Edit";
     edit.addEventListener("click", () => loadProductIntoForm(product));
     const del = document.createElement("button");
-    del.className = "button danger small"; del.type = "button"; del.textContent = product.status === "archived" ? "Archived" : "Archive";
+    del.className = "button danger small"; del.type = "button"; del.textContent = "Archive";
     del.disabled = product.status === "archived";
     del.addEventListener("click", () => handleDeleteProduct(product));
-    actions.append(minus, plus, edit, del);
+    if (product.status === "archived") {
+      const restore = document.createElement("button");
+      restore.className = "button ghost small"; restore.type = "button"; restore.textContent = "Restore";
+      restore.addEventListener("click", () => handleRestoreProduct(product));
+      actions.append(minus, plus, edit, restore);
+    } else {
+      actions.append(minus, plus, edit, del);
+    }
     inventoryList.appendChild(row);
   });
 }
@@ -416,6 +513,104 @@ function updateAdminStats(products) {
   statLowstock.textContent = String(lowStock);
   if (statActive) statActive.textContent = String(active);
   if (statHidden) statHidden.textContent = String(hidden);
+}
+
+function renderLowStockAlerts(products) {
+  if (!lowStockList) return;
+  lowStockList.innerHTML = "";
+  const lowStockProducts = products
+    .filter((product) => product.status === "active" && Number(product.stock || 0) <= 3)
+    .sort((a, b) => Number(a.stock || 0) - Number(b.stock || 0));
+
+  if (!lowStockProducts.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state compact";
+    empty.textContent = "No active products are low on stock.";
+    lowStockList.appendChild(empty);
+    return;
+  }
+
+  lowStockProducts.forEach((product) => {
+    const row = document.createElement("article");
+    row.className = `low-stock-row ${Number(product.stock || 0) === 0 ? "critical" : ""}`;
+    row.innerHTML = `
+      <img src="${escapeHTML(product.image_url || fallbackImage)}" alt="${escapeHTML(product.name)}" />
+      <div><strong>${escapeHTML(product.name)}</strong><span>${escapeHTML(product.style || "Accessory")} · ${formatPrice(product.price)}</span></div>
+      <b>${escapeHTML(product.stock)} left</b>
+    `;
+    row.querySelector("img").onerror = (event) => { event.currentTarget.src = fallbackImage; };
+    row.addEventListener("click", () => {
+      adminStatusFilter.value = "active";
+      adminSort.value = "stock-asc";
+      adminInventorySearch.value = product.name;
+      refreshAdminInventory();
+      inventoryList?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    lowStockList.appendChild(row);
+  });
+}
+
+function updateOrderStats(orders) {
+  const count = (status) => orders.filter((order) => order.status === status).length;
+  if (statOrdersNew) statOrdersNew.textContent = String(count("new"));
+  if (statOrdersPending) statOrdersPending.textContent = String(count("new") + count("contacted"));
+  if (statOrdersConfirmed) statOrdersConfirmed.textContent = String(count("confirmed"));
+  if (statOrdersPriority) statOrdersPriority.textContent = String(orders.filter((order) => (order.priority || "normal") === "priority").length);
+  if (statOrdersFulfilled) statOrdersFulfilled.textContent = String(count("fulfilled"));
+}
+
+function orderStatusLabel(status) {
+  return ({ new: "New", contacted: "Contacted", confirmed: "Confirmed", cancelled: "Cancelled", fulfilled: "Fulfilled" })[status] || status;
+}
+
+function buildCustomerContactUrl(order) {
+  const phone = String(order.phone || "").replace(/\D/g, "");
+  const itemLines = (order.items || []).map((item) => `- ${item.product_name} x${item.quantity}`).join("\n");
+  const message = [
+    `Hi ${order.customer_name}, this is RSCollection about request #${order.id}.`,
+    itemLines,
+    `Total: ${formatPrice(order.total_price)}`,
+    "Please confirm availability and delivery details."
+  ].filter(Boolean).join("\n");
+  return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;
+}
+
+function renderOrders(orders) {
+  if (!ordersList) return;
+  ordersList.innerHTML = "";
+  if (ordersCount) ordersCount.textContent = `${orders.length} request${orders.length === 1 ? "" : "s"}`;
+  if (!orders.length) {
+    const empty = document.createElement("div");
+    empty.className = "empty-state compact";
+    empty.textContent = "No customer requests match this filter yet.";
+    ordersList.appendChild(empty);
+    return;
+  }
+  orders.forEach((order) => {
+    const row = document.createElement("article");
+    row.className = `order-card ${(order.priority || "normal") === "priority" ? "priority" : ""}`;
+    const items = (order.items || []).map((item) => `<li>${escapeHTML(item.product_name)} × ${escapeHTML(item.quantity)} <span>${formatPrice(item.line_total)}</span></li>`).join("");
+    const priority = order.priority || "normal";
+    row.innerHTML = `
+      <div class="order-card-head">
+        <div><strong>#${escapeHTML(order.id)} · ${escapeHTML(order.customer_name)}</strong><span>${escapeHTML(new Date(order.created_at).toLocaleString())}</span></div>
+        <div class="order-badges"><div class="status-chip priority-${escapeHTML(priority)}">${priority === "priority" ? "Priority" : "Normal"}</div><div class="status-chip order-${escapeHTML(order.status)}">${escapeHTML(orderStatusLabel(order.status))}</div></div>
+      </div>
+      <div class="order-contact"><span>📞 ${escapeHTML(order.phone)}</span><span>📍 ${escapeHTML(order.city)}</span><strong>${formatPrice(order.total_price)}</strong></div>
+      <ul class="order-items">${items}</ul>
+      ${order.notes ? `<p class="order-notes"><strong>Customer note</strong>${escapeHTML(order.notes)}</p>` : ""}
+      <div class="order-owner-tools">
+        <label><span>Status</span><select data-role="order-status" aria-label="Update order status"><option value="new">New</option><option value="contacted">Contacted</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option><option value="fulfilled">Fulfilled</option></select></label>
+        <label><span>Priority</span><select data-role="order-priority" aria-label="Update order priority"><option value="normal">Normal</option><option value="priority">Priority</option></select></label>
+        <label class="owner-note"><span>Owner note</span><textarea data-role="admin-note" maxlength="500" placeholder="Private owner note, follow-up promise, delivery context...">${escapeHTML(order.admin_note || "")}</textarea></label>
+      </div>
+      <div class="order-actions"><button class="button ghost small" data-role="save-order" type="button">Save owner update</button><a class="button whatsapp small" href="${buildCustomerContactUrl(order)}" target="_blank" rel="noreferrer">WhatsApp customer</a></div>
+    `;
+    row.querySelector('[data-role="order-status"]').value = order.status;
+    row.querySelector('[data-role="order-priority"]').value = priority;
+    row.querySelector('[data-role="save-order"]').addEventListener("click", () => handleOrderAdminUpdate(order, row));
+    ordersList.appendChild(row);
+  });
 }
 
 async function handleStockAdjust(product, delta) {
@@ -447,12 +642,40 @@ async function handleDeleteProduct(product) {
   } catch (error) { setMessage(formMessage, error.message, "error"); }
 }
 
+async function handleRestoreProduct(product) {
+  setMessage(formMessage, `Restoring ${product.name}...`, "neutral");
+  try {
+    const updated = await adminRequestJSON(`/products/${product.id}/restore`, { method: "PATCH" });
+    setMessage(formMessage, `${updated.name} restored as ${statusLabel(updated.status)}.`, "success");
+    await loadAdminProducts();
+  } catch (error) { setMessage(formMessage, error.message, "error"); }
+}
+
+async function handleOrderAdminUpdate(order, row) {
+  const payload = {
+    status: row.querySelector('[data-role="order-status"]')?.value,
+    priority: row.querySelector('[data-role="order-priority"]')?.value,
+    admin_note: row.querySelector('[data-role="admin-note"]')?.value,
+  };
+  setMessage(formMessage, `Saving order #${order.id} owner update...`, "neutral");
+  try {
+    const updated = await adminRequestJSON(`/orders/${order.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    adminOrders = adminOrders.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
+    setMessage(formMessage, `Order #${order.id} saved.`, "success");
+    refreshAdminOrders();
+  } catch (error) { setMessage(formMessage, error.message, "error"); }
+}
+
 function unlockAdmin() {
   const gate = document.getElementById("admin-gate");
   const dashboard = document.getElementById("admin-dashboard");
   gate?.classList.add("hidden");
   dashboard?.classList.remove("hidden");
-  loadAdminProducts().catch((error) => setMessage(formMessage, error.message, "error"));
+  Promise.all([loadAdminProducts(), loadAdminOrders()]).catch((error) => setMessage(formMessage, error.message, "error"));
 }
 
 function initStorefront() {
@@ -465,6 +688,8 @@ function initStorefront() {
   document.getElementById("contact-cart")?.addEventListener("click", openCart);
   document.getElementById("copy-order")?.addEventListener("click", copyOrderSummary);
   document.getElementById("whatsapp-link")?.addEventListener("click", (event) => { event.preventDefault(); openWhatsAppOrder(); });
+  document.getElementById("cart-whatsapp")?.addEventListener("click", () => openWhatsAppOrder());
+  orderRequestForm?.addEventListener("submit", submitOrderRequest);
   document.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", () => productDialog?.close()));
   renderCart();
   Promise.all([loadProducts(), loadFeatured()]).catch((error) => { console.error(error); if (resultsSummary) resultsSummary.textContent = "Could not load products"; });
@@ -482,10 +707,16 @@ function initAdmin() {
     unlockAdmin();
   });
   document.getElementById("clear-admin-token")?.addEventListener("click", () => { sessionStorage.removeItem(adminTokenKey); tokenInput.value = ""; setMessage(tokenMessage, "Token cleared.", "neutral"); });
+  document.getElementById("admin-logout")?.addEventListener("click", () => { sessionStorage.removeItem(adminTokenKey); window.location.reload(); });
   [adminInventorySearch, adminStatusFilter, adminSort].forEach((control) => {
     control?.addEventListener("input", refreshAdminInventory);
     control?.addEventListener("change", refreshAdminInventory);
   });
+  [orderStatusFilter, orderPriorityFilter, orderSearch, orderSort].forEach((control) => {
+    control?.addEventListener("input", refreshAdminOrders);
+    control?.addEventListener("change", refreshAdminOrders);
+  });
+  document.getElementById("refresh-orders")?.addEventListener("click", () => loadAdminOrders().catch((error) => setMessage(formMessage, error.message, "error")));
   productForm?.elements.image_url?.addEventListener("input", updateImagePreview);
   updateImagePreview();
   cancelEditButton?.addEventListener("click", () => { resetAdminForm(); setMessage(formMessage, "Edit cancelled.", "neutral"); });

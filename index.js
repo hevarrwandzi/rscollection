@@ -97,6 +97,34 @@ function requireAdmin(req, res, next) {
 async function ensureDatabaseSchema() {
   await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'");
   await pool.query("UPDATE products SET status = 'active' WHERE status IS NULL OR status = ''");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS orders (
+      id SERIAL PRIMARY KEY,
+      customer_name TEXT NOT NULL,
+      phone TEXT NOT NULL,
+      city TEXT NOT NULL,
+      notes TEXT,
+      admin_note TEXT,
+      priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal', 'priority')),
+      total_price NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (total_price >= 0),
+      status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'confirmed', 'cancelled', 'fulfilled')),
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_note TEXT");
+  await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'");
+  await pool.query("UPDATE orders SET priority = 'normal' WHERE priority IS NULL OR priority = ''");
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS order_items (
+      id SERIAL PRIMARY KEY,
+      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+      product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+      product_name TEXT NOT NULL,
+      unit_price NUMERIC(10,2) NOT NULL CHECK (unit_price >= 0),
+      quantity INTEGER NOT NULL CHECK (quantity > 0),
+      line_total NUMERIC(10,2) NOT NULL CHECK (line_total >= 0)
+    )
+  `);
 }
 
 function validateProductPayload(body) {
@@ -173,6 +201,80 @@ function productSortClause(sort) {
   }
 }
 
+const allowedOrderStatuses = ["new", "contacted", "confirmed", "cancelled", "fulfilled"];
+
+function validateOrderStatus(status) {
+  if (!allowedOrderStatuses.includes(status)) {
+    return { error: "status must be one of new, contacted, confirmed, cancelled, or fulfilled" };
+  }
+  return { status };
+}
+
+function validateOrderAdminUpdatePayload(body) {
+  const payload = {};
+
+  if (Object.prototype.hasOwnProperty.call(body, "status")) {
+    const status = body.status?.toString().trim();
+    const validation = validateOrderStatus(status);
+    if (validation.error) return validation;
+    payload.status = validation.status;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "priority")) {
+    const priority = body.priority?.toString().trim() || "normal";
+    if (!["normal", "priority"].includes(priority)) {
+      return { error: "priority must be normal or priority" };
+    }
+    payload.priority = priority;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(body, "admin_note")) {
+    const adminNote = body.admin_note?.toString().trim() || null;
+    if (adminNote && adminNote.length > 500) {
+      return { error: "admin_note must be 500 characters or less" };
+    }
+    payload.admin_note = adminNote;
+  }
+
+  if (!Object.keys(payload).length) {
+    return { error: "at least one order field must be provided" };
+  }
+
+  return { payload };
+}
+
+function validateOrderRequestPayload(body) {
+  const payload = {
+    customer_name: body.customer_name?.toString().trim(),
+    phone: body.phone?.toString().trim(),
+    city: body.city?.toString().trim(),
+    notes: body.notes?.toString().trim() || null,
+    items: Array.isArray(body.items) ? body.items.map((item) => ({
+      product_id: Number(item.product_id ?? item.id),
+      quantity: Number(item.quantity ?? item.qty),
+    })) : [],
+  };
+
+  if (!payload.customer_name) return { error: "customer name is required" };
+  if (!payload.phone || !/^[+()0-9\s-]{7,24}$/.test(payload.phone)) {
+    return { error: "phone/WhatsApp must be a valid contact number" };
+  }
+  if (!payload.city) return { error: "city/location is required" };
+  if (!payload.items.length) return { error: "order must include at least one item" };
+  if (payload.items.some((item) => !Number.isInteger(item.product_id) || item.product_id <= 0 || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
+    return { error: "each order item needs a valid product_id and quantity" };
+  }
+
+  return { payload };
+}
+
+function orderSelectWhereClause(status) {
+  if (!status) return { clause: "", values: [] };
+  const validation = validateOrderStatus(status);
+  if (validation.error) return { error: validation.error };
+  return { clause: "WHERE o.status = $1", values: [status] };
+}
+
 function sendDatabaseError(res, error) {
   if (error.code === "23505") {
     return res.status(409).json({ error: "A product with this slug already exists" });
@@ -189,6 +291,10 @@ app.get("/api", (req, res) => {
       "GET /products",
       "GET /products/:id",
       "GET /featured-products",
+      "POST /orders",
+      "GET /orders (admin token required)",
+      "PATCH /orders/:id (admin token required)",
+      "PATCH /orders/:id/status (admin token required, status only)",
       "POST /products (admin token required)",
       "PUT /products/:id (admin token required)",
       "PATCH /products/:id/stock (admin token required)",
@@ -285,6 +391,174 @@ app.get("/products/:id", async (req, res) => {
     res.json(result.rows[0]);
   } catch (error) {
     console.error("Failed to fetch product:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.post("/orders", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { payload, error } = validateOrderRequestPayload(req.body);
+    if (error) return res.status(400).json({ error });
+
+    await client.query("BEGIN");
+    const productIds = payload.items.map((item) => item.product_id);
+    const productsResult = await client.query(
+      `${productSelect}
+       WHERE id = ANY($1::int[])
+         AND ${buildProductVisibilityWhere()}
+       FOR UPDATE`,
+      [productIds]
+    );
+
+    const productsById = new Map(productsResult.rows.map((product) => [Number(product.id), product]));
+    const orderItems = [];
+    let totalPrice = 0;
+
+    for (const item of payload.items) {
+      const product = productsById.get(item.product_id);
+      if (!product) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `product ${item.product_id} is unavailable` });
+      }
+
+      if (Number(product.stock) < item.quantity) {
+        await client.query("ROLLBACK");
+        return res.status(400).json({ error: `${product.name} only has ${product.stock} in stock` });
+      }
+
+      const unitPrice = Number(product.price);
+      const lineTotal = unitPrice * item.quantity;
+      totalPrice += lineTotal;
+      orderItems.push({ product, quantity: item.quantity, unitPrice, lineTotal });
+    }
+
+    const orderResult = await client.query(
+      `INSERT INTO orders (customer_name, phone, city, notes, total_price, status)
+       VALUES ($1, $2, $3, $4, $5, 'new')
+       RETURNING *`,
+      [payload.customer_name, payload.phone, payload.city, payload.notes, totalPrice]
+    );
+    const order = orderResult.rows[0];
+
+    for (const item of orderItems) {
+      await client.query(
+        `INSERT INTO order_items (order_id, product_id, product_name, unit_price, quantity, line_total)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [order.id, item.product.id, item.product.name, item.unitPrice, item.quantity, item.lineTotal]
+      );
+      await client.query(
+        `UPDATE products
+         SET stock = stock - $1,
+             status = CASE WHEN stock - $1 <= 0 THEN 'sold_out' ELSE status END
+         WHERE id = $2`,
+        [item.quantity, item.product.id]
+      );
+    }
+
+    await client.query("COMMIT");
+    res.status(201).json({
+      message: "Order request received. RSCollection will contact you to confirm availability and delivery.",
+      order: { ...order, items: orderItems.map((item) => ({ product_name: item.product.name, unit_price: item.unitPrice, quantity: item.quantity, line_total: item.lineTotal })) },
+    });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("Failed to create order:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/orders", requireAdmin, async (req, res) => {
+  try {
+    const where = orderSelectWhereClause(req.query.status?.toString());
+    if (where.error) return res.status(400).json({ error: where.error });
+
+    const result = await pool.query(
+      `SELECT
+         o.id,
+         o.customer_name,
+         o.phone,
+         o.city,
+         o.notes,
+         o.admin_note,
+         COALESCE(o.priority, 'normal') AS priority,
+         o.total_price,
+         o.status,
+         o.created_at,
+         COALESCE(json_agg(json_build_object(
+           'id', oi.id,
+           'product_id', oi.product_id,
+           'product_name', oi.product_name,
+           'unit_price', oi.unit_price,
+           'quantity', oi.quantity,
+           'line_total', oi.line_total
+         ) ORDER BY oi.id) FILTER (WHERE oi.id IS NOT NULL), '[]') AS items
+       FROM orders o
+       LEFT JOIN order_items oi ON oi.order_id = o.id
+       ${where.clause}
+       GROUP BY o.id
+       ORDER BY o.created_at DESC`,
+      where.values
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Failed to fetch orders:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.patch("/orders/:id/status", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const status = req.body.status?.toString().trim();
+    const validation = validateOrderStatus(status);
+    if (validation.error) return res.status(400).json({ error: validation.error });
+
+    const result = await pool.query(
+      `UPDATE orders
+       SET status = $1
+       WHERE id = $2
+       RETURNING *`,
+      [status, id]
+    );
+
+    if (!result.rows.length) return res.status(404).json({ error: "Order not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Failed to update order status:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.patch("/orders/:id", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { payload, error } = validateOrderAdminUpdatePayload(req.body || {});
+    if (error) return res.status(400).json({ error });
+
+    const fields = [];
+    const values = [];
+    Object.entries(payload).forEach(([key, value]) => {
+      values.push(value);
+      fields.push(`${key} = $${values.length}`);
+    });
+    values.push(id);
+
+    const result = await pool.query(
+      `UPDATE orders
+       SET ${fields.join(", ")}
+       WHERE id = $${values.length}
+       RETURNING *`,
+      values
+    );
+
+    if (!result.rows.length) return res.status(404).json({ error: "Order not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Failed to update order:", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -430,6 +704,25 @@ app.delete("/products/:id", requireAdmin, async (req, res) => {
   }
 });
 
+app.patch("/products/:id/restore", requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await pool.query(
+      `UPDATE products
+       SET status = CASE WHEN stock > 0 THEN 'active' ELSE 'sold_out' END
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (!result.rows.length) return res.status(404).json({ error: "Product not found" });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Failed to restore product:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/admin", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
@@ -458,4 +751,8 @@ module.exports = {
   validateProductPayload,
   buildProductVisibilityWhere,
   productSortClause,
+  validateOrderRequestPayload,
+  validateOrderStatus,
+  validateOrderAdminUpdatePayload,
+  allowedOrderStatuses,
 };

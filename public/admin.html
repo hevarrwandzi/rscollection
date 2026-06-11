@@ -14,7 +14,7 @@
     <div class="ambient ambient-one"></div>
     <header class="site-header admin-header">
       <a class="brand" href="/" aria-label="Back to storefront"><span class="brand-mark">RS</span><span><strong>RSCollection</strong><small>Admin workspace</small></span></a>
-      <nav class="nav-links"><a href="/">View storefront</a></nav>
+      <nav class="nav-links"><a href="/">View storefront</a><button class="button ghost small" id="admin-logout" type="button">Logout</button></nav>
     </header>
 
     <main class="section-shell admin-page">
@@ -40,8 +40,17 @@
             <div><span>Low stock</span><strong id="stat-lowstock">0</strong></div>
             <div><span>Active</span><strong id="stat-active">0</strong></div>
             <div><span>Draft/archive</span><strong id="stat-hidden">0</strong></div>
+            <div><span>New orders</span><strong id="stat-orders-new">0</strong></div>
+            <div><span>Pending follow-up</span><strong id="stat-orders-pending">0</strong></div>
+            <div><span>Confirmed</span><strong id="stat-orders-confirmed">0</strong></div>
+            <div><span>Priority</span><strong id="stat-orders-priority">0</strong></div>
+            <div><span>Fulfilled</span><strong id="stat-orders-fulfilled">0</strong></div>
           </div>
-          <div class="admin-note"><strong>Workflow</strong><ol><li>Create products with unique slugs.</li><li>Use status to draft, publish, hide, or mark sold out.</li><li>Use quick stock buttons for day-to-day inventory changes.</li></ol></div>
+          <div class="admin-note"><strong>Workflow</strong><ol><li>Create products with unique slugs.</li><li>Use status to draft, publish, hide, or mark sold out.</li><li>Review new requests, contact customer, confirm or cancel, then mark fulfilled.</li></ol></div>
+          <section class="low-stock-panel" aria-label="Low stock alerts">
+            <div class="section-head tight"><div><p class="eyebrow">Restock watch</p><h3>Low stock alerts</h3></div></div>
+            <div id="low-stock-list" class="low-stock-list"></div>
+          </section>
         </aside>
 
         <div class="admin-workspace">
@@ -73,6 +82,17 @@
             </div>
           </form>
           <p id="form-message" class="form-message" role="status"></p>
+          <section class="orders-panel">
+            <div class="section-head tight"><div><p class="eyebrow">Orders / requests</p><h3>Customer follow-up queue</h3></div><span id="orders-count" class="pill">0 requests</span></div>
+            <form class="admin-inventory-controls order-controls" aria-label="Order filters">
+              <label><span>Search</span><input id="order-search" type="search" placeholder="Search customer, phone, city, #id..." /></label>
+              <label><span>Status</span><select id="order-status-filter"><option value="">All orders</option><option value="new">New</option><option value="contacted">Contacted</option><option value="confirmed">Confirmed</option><option value="cancelled">Cancelled</option><option value="fulfilled">Fulfilled</option></select></label>
+              <label><span>Priority</span><select id="order-priority-filter"><option value="">All priorities</option><option value="priority">Priority only</option><option value="normal">Normal</option></select></label>
+              <label><span>Sort</span><select id="order-sort"><option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="total-desc">Highest value</option><option value="priority">Priority first</option></select></label>
+              <button class="button ghost" id="refresh-orders" type="button">Refresh orders</button>
+            </form>
+            <div id="orders-list" class="orders-list"></div>
+          </section>
           <div class="inventory-panel">
             <div class="section-head tight"><div><p class="eyebrow">Inventory</p><h3>Product management</h3></div><span id="inventory-count" class="pill">0 items</span></div>
             <form id="admin-inventory-controls" class="admin-inventory-controls" aria-label="Inventory controls">

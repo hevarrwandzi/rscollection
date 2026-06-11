@@ -4,7 +4,37 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>RSCollection | Anime & Gaming Accessories</title>
-    <meta name="description" content="Shop RSCollection anime and gaming accessories with clear prices, stock, delivery info, and simple WhatsApp or Instagram ordering." />
+    <meta name="description" content="Shop RSCollection anime and gaming accessories with real product photos, clear prices, live stock, local delivery info, and simple WhatsApp or Instagram ordering." />
+    <meta name="keywords" content="RSCollection, anime accessories, gaming accessories, necklaces, pendants, charms, local accessory shop" />
+    <meta name="robots" content="index, follow" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="RSCollection" />
+    <meta property="og:title" content="RSCollection | Anime & Gaming Accessories" />
+    <meta property="og:description" content="Dark premium necklaces, pendants, charms, and small accessories with clear stock, prices, and quick WhatsApp or Instagram ordering." />
+    <meta property="og:image" content="/assets/products/charm-chain.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="RSCollection | Anime & Gaming Accessories" />
+    <meta name="twitter:description" content="Shop real anime and gaming accessories with photos, prices, stock, and quick order options." />
+    <meta name="twitter:image" content="/assets/products/charm-chain.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Store",
+        "name": "RSCollection",
+        "description": "Anime and gaming accessory shop selling necklaces, pendants, charms, and small accessories with WhatsApp or Instagram ordering.",
+        "image": "/assets/products/charm-chain.png",
+        "sameAs": ["https://www.instagram.com/rscollection"],
+        "hasOfferCatalog": {
+          "@type": "OfferCatalog",
+          "name": "Anime and gaming accessories",
+          "itemListElement": [
+            { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "Crown Charm Chain" } },
+            { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "Silver Wolf Pendant" } },
+            { "@type": "Offer", "itemOffered": { "@type": "Product", "name": "Skeleton Key Necklace" } }
+          ]
+        }
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
@@ -129,7 +159,20 @@
     <aside class="cart-drawer" id="cart-drawer" aria-hidden="true">
       <div class="cart-header"><div><p class="eyebrow">Order list</p><h2>Your RS picks</h2></div><button class="modal-close" id="close-cart" type="button" aria-label="Close cart">×</button></div>
       <div id="cart-items" class="cart-items"></div>
-      <div class="cart-footer"><div class="cart-total"><span>Total</span><strong id="cart-total">$0.00</strong></div><button class="button primary" id="copy-order" type="button">Copy order summary</button><p id="cart-message" class="form-message" role="status"></p></div>
+      <div class="cart-footer">
+        <div class="cart-total"><span>Total</span><strong id="cart-total">$0.00</strong></div>
+        <form id="order-request-form" class="order-request-form">
+          <div class="form-grid two">
+            <label><span>Name</span><input name="customer_name" autocomplete="name" placeholder="Your name" required /></label>
+            <label><span>Phone / WhatsApp</span><input name="phone" autocomplete="tel" placeholder="07xx xxx xxxx" required /></label>
+          </div>
+          <label><span>City / location</span><input name="city" autocomplete="address-level2" placeholder="City or delivery area" required /></label>
+          <label><span>Notes</span><textarea name="notes" placeholder="Size, delivery time, or questions..." rows="3"></textarea></label>
+          <button class="button primary" id="submit-order" type="submit">Send order request</button>
+        </form>
+        <div class="cart-quick-actions"><button class="button ghost" id="copy-order" type="button">Copy summary</button><button class="button whatsapp" id="cart-whatsapp" type="button">WhatsApp quick order</button></div>
+        <p id="cart-message" class="form-message" role="status"></p>
+      </div>
     </aside>
     <div class="drawer-backdrop" id="drawer-backdrop"></div>
 
