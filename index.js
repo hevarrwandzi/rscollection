@@ -1,11 +1,25 @@
 const express = require("express");
 const cors = require("cors");
 const path = require("path");
+const fs = require("fs");
 const crypto = require("crypto");
+const multer = require("multer");
 const { Pool } = require("pg");
 require("dotenv").config();
 
 const app = express();
+const uploadedProductImageDir = path.join(__dirname, "public", "assets", "uploads", "products");
+const uploadProductImage = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const allowedMimeTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+    if (!allowedMimeTypes.has(file.mimetype)) {
+      return cb(new Error("Only JPG, PNG, WebP, or GIF product images are allowed"));
+    }
+    return cb(null, true);
+  },
+});
 
 app.use(cors());
 app.use(express.json());
@@ -25,6 +39,7 @@ const pool = new Pool({
   database: process.env.DB_NAME,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
+  ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined,
 });
 // Health check endpoint used by Docker/Caddy/monitoring.
 // It verifies both the Node process and PostgreSQL connectivity.
@@ -59,12 +74,14 @@ const productSelect = `
     description,
     material,
     color,
+    color_options,
     style,
     chain_length_cm,
     price,
     stock,
     featured,
     image_url,
+    image_urls,
     COALESCE(status, 'active') AS status,
     created_at
   FROM products
@@ -96,7 +113,10 @@ function requireAdmin(req, res, next) {
 
 async function ensureDatabaseSchema() {
   await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'");
+  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS color_options TEXT");
+  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls TEXT[]");
   await pool.query("UPDATE products SET status = 'active' WHERE status IS NULL OR status = ''");
+  await pool.query("UPDATE products SET image_urls = ARRAY[image_url] WHERE (image_urls IS NULL OR array_length(image_urls, 1) IS NULL) AND image_url IS NOT NULL AND image_url <> ''");
   await pool.query(`
     CREATE TABLE IF NOT EXISTS orders (
       id SERIAL PRIMARY KEY,
@@ -125,6 +145,46 @@ async function ensureDatabaseSchema() {
       line_total NUMERIC(10,2) NOT NULL CHECK (line_total >= 0)
     )
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS site_content (
+      key TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      section TEXT NOT NULL,
+      value TEXT NOT NULL,
+      input_type TEXT NOT NULL DEFAULT 'text',
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  for (const item of defaultSiteContent) {
+    await pool.query(
+      `INSERT INTO site_content (key, label, section, value, input_type)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (key) DO NOTHING`,
+      [item.key, item.label, item.section, item.value, item.input_type]
+    );
+  }
+}
+
+function splitListValue(value) {
+  if (Array.isArray(value)) return value;
+  return value?.toString().split(/[,\n]/) || [];
+}
+
+function normalizeColorOptions(value, fallbackColor = "") {
+  const colors = splitListValue(value)
+    .map((item) => item?.toString().trim())
+    .filter(Boolean);
+  if (!colors.length && fallbackColor) colors.push(fallbackColor.trim());
+  return Array.from(new Set(colors)).slice(0, 4).join(" / ");
+}
+
+function normalizeProductImages(primaryImage, imageValues) {
+  const images = splitListValue(imageValues)
+    .map((item) => item?.toString().trim())
+    .filter(Boolean);
+  const primary = primaryImage?.toString().trim();
+  if (primary) images.unshift(primary);
+  return Array.from(new Set(images)).slice(0, 3);
 }
 
 function validateProductPayload(body) {
@@ -134,12 +194,14 @@ function validateProductPayload(body) {
     description: body.description?.toString().trim(),
     material: body.material?.toString().trim(),
     color: body.color?.toString().trim(),
+    color_options: normalizeColorOptions(body.color_options, body.color),
     style: body.style?.toString().trim(),
     chain_length_cm: Number(body.chain_length_cm),
     price: Number(body.price),
     stock: Number(body.stock ?? 0),
     featured: Boolean(body.featured),
     image_url: body.image_url?.toString().trim() || null,
+    image_urls: normalizeProductImages(body.image_url, body.image_urls),
     status: body.status?.toString().trim() || "active",
   };
 
@@ -177,6 +239,14 @@ function validateProductPayload(body) {
     return { error: "status must be one of draft, active, archived, or sold_out" };
   }
 
+  if (!payload.image_url && payload.image_urls.length) {
+    payload.image_url = payload.image_urls[0];
+  }
+
+  if (payload.image_urls.length > 3) {
+    return { error: "image gallery can include up to 3 photos" };
+  }
+
   if (payload.status === "active" && payload.stock === 0) {
     payload.status = "sold_out";
   }
@@ -199,6 +269,58 @@ function productSortClause(sort) {
     default:
       return "featured DESC, created_at DESC";
   }
+}
+
+function productImageExtension(mimetype) {
+  return ({
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+    "image/gif": ".gif",
+  })[mimetype] || null;
+}
+
+function buildUploadedProductImagePath(file) {
+  const extension = productImageExtension(file?.mimetype);
+  if (!extension) return null;
+  const filename = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+  return {
+    filename,
+    diskPath: path.join(uploadedProductImageDir, filename),
+    publicUrl: `/assets/uploads/products/${filename}`,
+  };
+}
+
+const defaultSiteContent = [
+  { key: "theme.default", label: "Default theme", section: "Theme", value: "dark", input_type: "theme" },
+  { key: "hero.eyebrow", label: "Hero eyebrow", section: "Hero", value: "Accessory shop story mode", input_type: "text" },
+  { key: "hero.title", label: "Hero title", section: "Hero", value: "Your style needs a main character arc.", input_type: "text" },
+  { key: "hero.subtitle", label: "Hero subtitle", section: "Hero", value: "Browse the drop, pick your item, then message RSCollection on WhatsApp or Instagram. Real photos, clear stock, simple ordering.", input_type: "textarea" },
+  { key: "hero.primary_cta", label: "Hero primary button", section: "Hero", value: "Shop the drop", input_type: "text" },
+  { key: "hero.secondary_cta", label: "Hero secondary button", section: "Hero", value: "See featured picks", input_type: "text" },
+  { key: "catalog.title", label: "Catalog title", section: "Catalog", value: "Shop the drop", input_type: "text" },
+  { key: "catalog.subtitle", label: "Catalog subtitle", section: "Catalog", value: "Search by product name, material, or style. Filter by accessory type and price.", input_type: "textarea" },
+  { key: "featured.title", label: "Featured title", section: "Featured", value: "New drops & best picks", input_type: "text" },
+  { key: "contact.title", label: "Contact title", section: "Contact", value: "Ready to buy from RSCollection?", input_type: "text" },
+  { key: "contact.subtitle", label: "Contact subtitle", section: "Contact", value: "Add products to your order list, then send a prepared message through WhatsApp or Instagram. Simple, direct, and customer-friendly.", input_type: "textarea" },
+  { key: "footer.description", label: "Footer description", section: "Footer", value: "Dark accessory drops, necklaces, pendants, charms, and fan-friendly pieces.", input_type: "textarea" },
+];
+
+function buildSiteContentMap(rows) {
+  return rows.reduce((content, row) => {
+    content[row.key] = row.value;
+    return content;
+  }, {});
+}
+
+function normalizeSiteContentPayload(body, definition) {
+  const value = body.value?.toString().trim();
+  if (!value) return { error: "content value is required" };
+  if (value.length > 1200) return { error: "content value must be 1200 characters or less" };
+  if (definition?.input_type === "theme" && !["dark", "light"].includes(value)) {
+    return { error: "theme.default must be dark or light" };
+  }
+  return { payload: { value } };
 }
 
 const allowedOrderStatuses = ["new", "contacted", "confirmed", "cancelled", "fulfilled"];
@@ -291,6 +413,9 @@ app.get("/api", (req, res) => {
       "GET /products",
       "GET /products/:id",
       "GET /featured-products",
+      "GET /site-content",
+      "GET /admin/site-content (admin token required)",
+      "PUT /admin/site-content/:key (admin token required)",
       "POST /orders",
       "GET /orders (admin token required)",
       "PATCH /orders/:id (admin token required)",
@@ -301,6 +426,49 @@ app.get("/api", (req, res) => {
       "DELETE /products/:id (admin token required)",
     ],
   });
+});
+
+app.get("/site-content", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT key, value FROM site_content ORDER BY section, key");
+    res.json(buildSiteContentMap(result.rows));
+  } catch (error) {
+    console.error("Failed to fetch site content:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/admin/site-content", requireAdmin, async (req, res) => {
+  try {
+    const result = await pool.query("SELECT key, label, section, value, input_type, updated_at FROM site_content ORDER BY section, key");
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Failed to fetch admin site content:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.put("/admin/site-content/:key", requireAdmin, async (req, res) => {
+  try {
+    const { key } = req.params;
+    const existing = await pool.query("SELECT key, input_type FROM site_content WHERE key = $1", [key]);
+    if (!existing.rows.length) return res.status(404).json({ error: "Content key not found" });
+
+    const { payload, error } = normalizeSiteContentPayload(req.body || {}, existing.rows[0]);
+    if (error) return res.status(400).json({ error });
+
+    const result = await pool.query(
+      `UPDATE site_content
+       SET value = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE key = $2
+       RETURNING key, label, section, value, input_type, updated_at`,
+      [payload.value, key]
+    );
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Failed to update site content:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
 });
 
 app.get("/products", async (req, res) => {
@@ -563,6 +731,36 @@ app.patch("/orders/:id", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/admin/product-images", requireAdmin, (req, res) => {
+  uploadProductImage.single("image")(req, res, async (uploadError) => {
+    try {
+      if (uploadError) {
+        const status = uploadError.code === "LIMIT_FILE_SIZE" ? 413 : 400;
+        const message = uploadError.code === "LIMIT_FILE_SIZE"
+          ? "Product image must be 3MB or smaller"
+          : uploadError.message;
+        return res.status(status).json({ error: message });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "image file is required" });
+      }
+
+      const imagePath = buildUploadedProductImagePath(req.file);
+      if (!imagePath) {
+        return res.status(400).json({ error: "Unsupported image type" });
+      }
+
+      await fs.promises.mkdir(uploadedProductImageDir, { recursive: true });
+      await fs.promises.writeFile(imagePath.diskPath, req.file.buffer, { flag: "wx" });
+      return res.status(201).json({ image_url: imagePath.publicUrl, filename: imagePath.filename });
+    } catch (error) {
+      console.error("Failed to upload product image:", error.message);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+});
+
 app.post("/products", requireAdmin, async (req, res) => {
   try {
     const { payload, error } = validateProductPayload(req.body);
@@ -573,9 +771,9 @@ app.post("/products", requireAdmin, async (req, res) => {
 
     const result = await pool.query(
       `INSERT INTO products (
-        slug, name, description, material, color, style, chain_length_cm, price, stock, featured, image_url, status
+        slug, name, description, material, color, color_options, style, chain_length_cm, price, stock, featured, image_url, image_urls, status
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
       RETURNING *`,
       [
         payload.slug,
@@ -583,12 +781,14 @@ app.post("/products", requireAdmin, async (req, res) => {
         payload.description,
         payload.material,
         payload.color,
+        payload.color_options,
         payload.style,
         payload.chain_length_cm,
         payload.price,
         payload.stock,
         payload.featured,
         payload.image_url,
+        payload.image_urls,
         payload.status,
       ]
     );
@@ -616,14 +816,16 @@ app.put("/products/:id", requireAdmin, async (req, res) => {
            description = $3,
            material = $4,
            color = $5,
-           style = $6,
-           chain_length_cm = $7,
-           price = $8,
-           stock = $9,
-           featured = $10,
-           image_url = $11,
-           status = $12
-       WHERE id = $13
+           color_options = $6,
+           style = $7,
+           chain_length_cm = $8,
+           price = $9,
+           stock = $10,
+           featured = $11,
+           image_url = $12,
+           image_urls = $13,
+           status = $14
+       WHERE id = $15
        RETURNING *`,
       [
         payload.slug,
@@ -631,12 +833,14 @@ app.put("/products/:id", requireAdmin, async (req, res) => {
         payload.description,
         payload.material,
         payload.color,
+        payload.color_options,
         payload.style,
         payload.chain_length_cm,
         payload.price,
         payload.stock,
         payload.featured,
         payload.image_url,
+        payload.image_urls,
         payload.status,
         id,
       ]
@@ -749,10 +953,17 @@ if (require.main === module) {
 module.exports = {
   app,
   validateProductPayload,
+  normalizeColorOptions,
+  normalizeProductImages,
   buildProductVisibilityWhere,
   productSortClause,
   validateOrderRequestPayload,
   validateOrderStatus,
   validateOrderAdminUpdatePayload,
   allowedOrderStatuses,
+  productImageExtension,
+  buildUploadedProductImagePath,
+  defaultSiteContent,
+  normalizeSiteContentPayload,
+  buildSiteContentMap,
 };

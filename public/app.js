@@ -33,6 +33,8 @@ const adminInventorySearch = document.getElementById("admin-inventory-search");
 const adminStatusFilter = document.getElementById("admin-status-filter");
 const adminSort = document.getElementById("admin-sort");
 const imagePreview = document.getElementById("image-preview");
+const imagePreview2 = document.getElementById("image-preview-2");
+const imagePreview3 = document.getElementById("image-preview-3");
 const orderRequestForm = document.getElementById("order-request-form");
 const ordersList = document.getElementById("orders-list");
 const ordersCount = document.getElementById("orders-count");
@@ -46,6 +48,13 @@ const statOrdersConfirmed = document.getElementById("stat-orders-confirmed");
 const statOrdersPriority = document.getElementById("stat-orders-priority");
 const statOrdersFulfilled = document.getElementById("stat-orders-fulfilled");
 const lowStockList = document.getElementById("low-stock-list");
+const productImageFile = document.getElementById("product-image-file");
+const uploadProductImageButton = document.getElementById("upload-product-image");
+const siteContentForm = document.getElementById("site-content-form");
+const siteContentFields = document.getElementById("site-content-fields");
+const siteContentMessage = document.getElementById("site-content-message");
+const adminPageTabs = document.querySelectorAll("[data-admin-target]");
+const adminPanelPages = document.querySelectorAll("[data-admin-page]");
 
 let currentQueryString = "";
 let editingProductId = null;
@@ -77,6 +86,78 @@ function setMessage(element, message, tone = "neutral") {
   element.dataset.tone = tone;
 }
 
+function applySiteContent(content = {}) {
+  document.querySelectorAll("[data-content]").forEach((element) => {
+    const value = content[element.dataset.content];
+    if (typeof value === "string" && value.length) element.textContent = value;
+  });
+  if (content["theme.default"]) document.body.dataset.theme = content["theme.default"];
+}
+
+async function loadSiteContent() {
+  const content = await requestJSON("/site-content");
+  applySiteContent(content);
+  return content;
+}
+
+function groupedSiteContent(rows) {
+  return rows.reduce((groups, row) => {
+    if (!groups[row.section]) groups[row.section] = [];
+    groups[row.section].push(row);
+    return groups;
+  }, {});
+}
+
+function renderSiteContentEditor(rows) {
+  if (!siteContentFields) return;
+  siteContentFields.innerHTML = "";
+  const groups = groupedSiteContent(rows);
+  Object.entries(groups).forEach(([section, items]) => {
+    const fieldset = document.createElement("fieldset");
+    fieldset.className = "content-section";
+    fieldset.innerHTML = `<legend>${escapeHTML(section)}</legend>`;
+    items.forEach((item) => {
+      const label = document.createElement("label");
+      label.dataset.key = item.key;
+      const control = item.input_type === "textarea"
+        ? `<textarea name="${escapeHTML(item.key)}" rows="3" maxlength="1200">${escapeHTML(item.value)}</textarea>`
+        : item.input_type === "theme"
+          ? `<select name="${escapeHTML(item.key)}"><option value="dark" ${item.value === "dark" ? "selected" : ""}>Dark</option><option value="light" ${item.value === "light" ? "selected" : ""}>Light</option></select>`
+          : `<input name="${escapeHTML(item.key)}" value="${escapeHTML(item.value)}" maxlength="1200" />`;
+      label.innerHTML = `<span>${escapeHTML(item.label)}</span>${control}`;
+      fieldset.appendChild(label);
+    });
+    siteContentFields.appendChild(fieldset);
+  });
+}
+
+async function loadAdminSiteContent() {
+  const rows = await adminRequestJSON("/admin/site-content");
+  renderSiteContentEditor(rows);
+}
+
+async function saveSiteContent(event) {
+  event.preventDefault();
+  if (!siteContentForm) return;
+  const formData = new FormData(siteContentForm);
+  const updates = Array.from(formData.entries()).map(([key, value]) => ({ key, value: value.toString() }));
+  setMessage(siteContentMessage, "Saving storefront text...", "neutral");
+  try {
+    const saved = [];
+    for (const update of updates) {
+      saved.push(await adminRequestJSON(`/admin/site-content/${encodeURIComponent(update.key)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ value: update.value }),
+      }));
+    }
+    applySiteContent(Object.fromEntries(saved.map((item) => [item.key, item.value])));
+    setMessage(siteContentMessage, "Storefront text saved. Refresh the shop to see the public page update.", "success");
+  } catch (error) {
+    setMessage(siteContentMessage, error.message, "error");
+  }
+}
+
 async function requestJSON(url, options = {}) {
   const response = await fetch(url, options);
   const payload = await response.json().catch(() => ({}));
@@ -99,6 +180,43 @@ async function adminRequestJSON(url, options = {}) {
   });
 }
 
+async function uploadSelectedProductImage() {
+  if (!productImageFile?.files?.length) {
+    setMessage(formMessage, "Choose a product image first.", "error");
+    return;
+  }
+
+  const file = productImageFile.files[0];
+  if (file.size > 3 * 1024 * 1024) {
+    setMessage(formMessage, "Product image must be 3MB or smaller.", "error");
+    return;
+  }
+
+  const uploadData = new FormData();
+  uploadData.append("image", file);
+  uploadProductImageButton.disabled = true;
+  uploadProductImageButton.textContent = "Uploading...";
+  setMessage(formMessage, `Uploading ${file.name}...`, "neutral");
+
+  try {
+    const result = await adminRequestJSON("/admin/product-images", {
+      method: "POST",
+      body: uploadData,
+    });
+    const imageFields = [productForm.elements.image_url, productForm.elements.image_url_2, productForm.elements.image_url_3];
+    const nextEmptyImageField = imageFields.find((field) => !field.value.trim()) || imageFields[0];
+    nextEmptyImageField.value = result.image_url;
+    productImageFile.value = "";
+    updateImagePreview();
+    setMessage(formMessage, "Image uploaded and attached to the product form.", "success");
+  } catch (error) {
+    setMessage(formMessage, error.message, "error");
+  } finally {
+    uploadProductImageButton.disabled = false;
+    uploadProductImageButton.textContent = "Upload image";
+  }
+}
+
 function readCart() {
   try {
     return JSON.parse(localStorage.getItem(cartStorageKey) || "[]");
@@ -110,6 +228,17 @@ function readCart() {
 function saveCart() {
   localStorage.setItem(cartStorageKey, JSON.stringify(cart));
   renderCart();
+}
+
+function productImages(product) {
+  const images = Array.isArray(product.image_urls) ? product.image_urls : [];
+  const combined = [product.image_url, ...images].map((item) => item?.toString().trim()).filter(Boolean);
+  return Array.from(new Set(combined)).slice(0, 3);
+}
+
+function colorOptions(product) {
+  const raw = product.color_options || product.color || "";
+  return raw.toString().split(/\s*\/\s*|,/).map((item) => item.trim()).filter(Boolean);
 }
 
 function createProductCard(product) {
@@ -125,8 +254,10 @@ function createProductCard(product) {
   const addButton = fragment.querySelector(".add-cart-button");
   const quickOrderButton = fragment.querySelector(".quick-order-button");
   const stock = stockLabel(product);
+  const images = productImages(product);
+  const colors = colorOptions(product);
 
-  image.src = product.image_url || fallbackImage;
+  image.src = images[0] || fallbackImage;
   image.alt = product.name;
   image.onerror = () => { image.src = fallbackImage; };
   badge.textContent = product.featured ? "Featured" : product.style;
@@ -134,6 +265,12 @@ function createProductCard(product) {
   price.textContent = formatPrice(product.price);
   name.textContent = product.name;
   description.textContent = product.description;
+  if (colors.length > 1) {
+    const colorRow = document.createElement("div");
+    colorRow.className = "color-options";
+    colorRow.innerHTML = colors.map((color) => `<span>${escapeHTML(color)}</span>`).join("");
+    description.after(colorRow);
+  }
   stockLine.textContent = stock.text;
   stockLine.dataset.tone = stock.tone;
   detailsButton.addEventListener("click", () => openProductDetail(product));
@@ -161,16 +298,21 @@ function renderProducts(target, products, emptyText) {
 function openProductDetail(product) {
   if (!productDialog || !productDetail) return;
   const stock = stockLabel(product);
+  const images = productImages(product);
+  const colors = colorOptions(product);
+  const gallery = (images.length ? images : [fallbackImage]).map((src, index) => `<img src="${escapeHTML(src)}" alt="${escapeHTML(product.name)} photo ${index + 1}" onerror="this.src='${fallbackImage}'" />`).join("");
+  const colorBadges = colors.length ? `<div class="color-options detail-colors">${colors.map((color) => `<span>${escapeHTML(color)}</span>`).join("")}</div>` : "";
   productDetail.innerHTML = `
-    <img src="${escapeHTML(product.image_url || fallbackImage)}" alt="${escapeHTML(product.name)}" onerror="this.src='${fallbackImage}'" />
+    <div class="detail-gallery">${gallery}</div>
     <div>
       <p class="eyebrow">${escapeHTML(product.style)}</p>
       <h2>${escapeHTML(product.name)}</h2>
       <div class="detail-price">${formatPrice(product.price)}</div>
       <p class="muted">${escapeHTML(product.description)}</p>
+      ${colorBadges}
       <ul class="detail-specs">
         <li><span>Material</span><strong>${escapeHTML(product.material)}</strong></li>
-        <li><span>Color</span><strong>${escapeHTML(product.color)}</strong></li>
+        <li><span>Colors</span><strong>${escapeHTML(product.color_options || product.color)}</strong></li>
         <li><span>Size</span><strong>${escapeHTML(product.chain_length_cm)} cm</strong></li>
         <li><span>Availability</span><strong>${escapeHTML(stock.text)}</strong></li>
       </ul>
@@ -417,12 +559,14 @@ function normalizeProductPayload(form) {
     description: formData.get("description")?.toString().trim(),
     material: formData.get("material")?.toString().trim(),
     color: formData.get("color")?.toString().trim(),
+    color_options: formData.get("color_options")?.toString().trim(),
     style: formData.get("style")?.toString().trim(),
     chain_length_cm: Number(formData.get("chain_length_cm")),
     price: Number(formData.get("price")),
     stock: Number(formData.get("stock") || 0),
     featured: Boolean(formData.get("featured")),
     image_url: formData.get("image_url")?.toString().trim() || null,
+    image_urls: [formData.get("image_url")?.toString().trim(), formData.get("image_url_2")?.toString().trim(), formData.get("image_url_3")?.toString().trim()].filter(Boolean),
     status: formData.get("status")?.toString() || "active",
   };
 }
@@ -443,7 +587,11 @@ function resetAdminForm() {
 function loadProductIntoForm(product) {
   editingProductId = product.id;
   productForm.elements.product_id.value = product.id;
-  ["slug", "name", "description", "material", "color", "style", "chain_length_cm", "price", "stock", "image_url", "status"].forEach((key) => { productForm.elements[key].value = product[key] ?? (key === "status" ? "active" : ""); });
+  ["slug", "name", "description", "material", "color", "color_options", "style", "chain_length_cm", "price", "stock", "image_url", "status"].forEach((key) => { productForm.elements[key].value = product[key] ?? (key === "status" ? "active" : ""); });
+  const images = productImages(product);
+  productForm.elements.image_url.value = images[0] || product.image_url || "";
+  productForm.elements.image_url_2.value = images[1] || "";
+  productForm.elements.image_url_3.value = images[2] || "";
   productForm.elements.featured.checked = Boolean(product.featured);
   submitButton.textContent = "Save changes";
   cancelEditButton.classList.remove("hidden");
@@ -451,13 +599,19 @@ function loadProductIntoForm(product) {
   adminSubtitle.textContent = "Update the selected item, then save or cancel edit mode.";
   setMessage(formMessage, `Loaded ${product.name} into the editor.`, "neutral");
   updateImagePreview();
+  setAdminPage("add-product", { scroll: true });
   productForm.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function updateImagePreview() {
   if (!imagePreview || !productForm) return;
-  imagePreview.src = productForm.elements.image_url.value.trim() || fallbackImage;
-  imagePreview.onerror = () => { imagePreview.src = fallbackImage; };
+  const previews = [imagePreview, imagePreview2, imagePreview3];
+  const fields = [productForm.elements.image_url, productForm.elements.image_url_2, productForm.elements.image_url_3];
+  previews.forEach((preview, index) => {
+    if (!preview) return;
+    preview.src = fields[index]?.value.trim() || fallbackImage;
+    preview.onerror = () => { preview.src = fallbackImage; };
+  });
 }
 
 function renderInventory(products) {
@@ -474,7 +628,7 @@ function renderInventory(products) {
   products.forEach((product) => {
     const row = document.createElement("article");
     row.className = "inventory-row";
-    row.innerHTML = `<img src="${escapeHTML(product.image_url || fallbackImage)}" alt="${escapeHTML(product.name)}" /><div class="inventory-main"><strong>${escapeHTML(product.name)}</strong><span>${escapeHTML(product.slug)} · ${escapeHTML(product.style)} · ${formatPrice(product.price)}</span></div><div class="inventory-meta"><div class="stock-chip ${Number(product.stock) <= 3 || product.status === "sold_out" ? "low" : ""}">${escapeHTML(product.stock)} stock</div><div class="status-chip status-${escapeHTML(product.status || "active")}">${escapeHTML(statusLabel(product.status))}</div></div><div class="inventory-actions"></div>`;
+    row.innerHTML = `<img src="${escapeHTML(product.image_url || fallbackImage)}" alt="${escapeHTML(product.name)}" /><div class="inventory-main"><strong>${escapeHTML(product.name)}</strong><span>${escapeHTML(product.slug)} · ${escapeHTML(product.style)} · ${escapeHTML(product.color_options || product.color)} · ${formatPrice(product.price)}</span></div><div class="inventory-meta"><div class="stock-chip ${Number(product.stock) <= 3 || product.status === "sold_out" ? "low" : ""}">${escapeHTML(product.stock)} stock</div><div class="status-chip status-${escapeHTML(product.status || "active")}">${escapeHTML(statusLabel(product.status))}</div></div><div class="inventory-actions"></div>`;
     row.querySelector("img").onerror = (event) => { event.currentTarget.src = fallbackImage; };
     const actions = row.querySelector(".inventory-actions");
     const minus = document.createElement("button");
@@ -540,6 +694,7 @@ function renderLowStockAlerts(products) {
     `;
     row.querySelector("img").onerror = (event) => { event.currentTarget.src = fallbackImage; };
     row.addEventListener("click", () => {
+      setAdminPage("inventory", { scroll: true });
       adminStatusFilter.value = "active";
       adminSort.value = "stock-asc";
       adminInventorySearch.value = product.name;
@@ -670,12 +825,31 @@ async function handleOrderAdminUpdate(order, row) {
   } catch (error) { setMessage(formMessage, error.message, "error"); }
 }
 
+function setAdminPage(pageName, { scroll = false } = {}) {
+  if (!adminPanelPages.length) return;
+  const target = pageName || "add-product";
+  adminPanelPages.forEach((panel) => panel.classList.toggle("active", panel.dataset.adminPage === target));
+  adminPageTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.adminTarget === target));
+  const activeTab = Array.from(adminPageTabs).find((tab) => tab.dataset.adminTarget === target);
+  if (activeTab && adminTitle) adminTitle.textContent = activeTab.querySelector("strong")?.textContent || "Admin workspace";
+  if (adminSubtitle) {
+    adminSubtitle.textContent = ({
+      "add-product": "Create new products or edit an item loaded from inventory.",
+      "edit-text": "Change public homepage text without touching code or hosting.",
+      inventory: "Search products, adjust stock, and archive or restore items.",
+      orders: "Review customer requests and track follow-up status.",
+    })[target] || "Manage RSCollection from this private workspace.";
+  }
+  if (scroll) document.querySelector(`[data-admin-page="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 function unlockAdmin() {
   const gate = document.getElementById("admin-gate");
   const dashboard = document.getElementById("admin-dashboard");
   gate?.classList.add("hidden");
   dashboard?.classList.remove("hidden");
-  Promise.all([loadAdminProducts(), loadAdminOrders()]).catch((error) => setMessage(formMessage, error.message, "error"));
+  setAdminPage("add-product");
+  Promise.all([loadAdminProducts(), loadAdminOrders(), loadAdminSiteContent()]).catch((error) => setMessage(formMessage, error.message, "error"));
 }
 
 function initStorefront() {
@@ -692,7 +866,7 @@ function initStorefront() {
   orderRequestForm?.addEventListener("submit", submitOrderRequest);
   document.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", () => productDialog?.close()));
   renderCart();
-  Promise.all([loadProducts(), loadFeatured()]).catch((error) => { console.error(error); if (resultsSummary) resultsSummary.textContent = "Could not load products"; });
+  Promise.all([loadSiteContent(), loadProducts(), loadFeatured()]).catch((error) => { console.error(error); if (resultsSummary) resultsSummary.textContent = "Could not load products"; });
 }
 
 function initAdmin() {
@@ -717,7 +891,15 @@ function initAdmin() {
     control?.addEventListener("change", refreshAdminOrders);
   });
   document.getElementById("refresh-orders")?.addEventListener("click", () => loadAdminOrders().catch((error) => setMessage(formMessage, error.message, "error")));
-  productForm?.elements.image_url?.addEventListener("input", updateImagePreview);
+  [productForm?.elements.image_url, productForm?.elements.image_url_2, productForm?.elements.image_url_3].forEach((field) => field?.addEventListener("input", updateImagePreview));
+  productImageFile?.addEventListener("change", () => {
+    if (productImageFile.files?.[0]) {
+      setMessage(formMessage, `Ready to upload ${productImageFile.files[0].name}.`, "neutral");
+    }
+  });
+  uploadProductImageButton?.addEventListener("click", uploadSelectedProductImage);
+  siteContentForm?.addEventListener("submit", saveSiteContent);
+  adminPageTabs.forEach((tab) => tab.addEventListener("click", () => setAdminPage(tab.dataset.adminTarget, { scroll: true })));
   updateImagePreview();
   cancelEditButton?.addEventListener("click", () => { resetAdminForm(); setMessage(formMessage, "Edit cancelled.", "neutral"); });
   productForm?.addEventListener("submit", async (event) => {

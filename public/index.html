@@ -61,12 +61,12 @@
     <main id="home">
       <section class="hero section-shell">
         <div class="hero-copy">
-          <p class="eyebrow">Dark accessory drop shop</p>
-          <h1>Anime gear with edge.</h1>
-          <p class="hero-text">RSCollection sells necklaces, pendants, charms, and small accessories with a dark premium style. Browse real items, check price and stock, then order through WhatsApp or Instagram.</p>
+          <p class="eyebrow" data-content="hero.eyebrow">Accessory shop story mode</p>
+          <h1 data-content="hero.title">Your style needs a main character arc.</h1>
+          <p class="hero-text" data-content="hero.subtitle">Browse the drop, pick your item, then message RSCollection on WhatsApp or Instagram. Real photos, clear stock, simple ordering.</p>
           <div class="hero-actions">
-            <a class="button primary" href="#catalog">Shop the drop</a>
-            <a class="button ghost" href="#featured">See featured picks</a>
+            <a class="button primary" href="#catalog" data-content="hero.primary_cta">Shop the drop</a>
+            <a class="button ghost" href="#featured" data-content="hero.secondary_cta">See featured picks</a>
           </div>
           <div class="trust-strip" aria-label="Shop promises">
             <div><strong>Real product photos</strong><span>No fake stock product feel</span></div>
@@ -108,7 +108,7 @@
 
       <section class="section-shell panel" id="catalog">
         <div class="section-head">
-          <div><p class="eyebrow">Catalog</p><h2>Shop the drop</h2><p class="muted">Search by product name, material, or style. Filter by accessory type and price.</p></div>
+          <div><p class="eyebrow">Catalog</p><h2 data-content="catalog.title">Shop the drop</h2><p class="muted" data-content="catalog.subtitle">Search by product name, material, or style. Filter by accessory type and price.</p></div>
           <span id="results-summary" class="pill">Loading products...</span>
         </div>
 
@@ -127,7 +127,7 @@
 
       <section class="section-shell" id="featured">
         <div class="section-head">
-          <div><p class="eyebrow">Featured</p><h2>New drops & best picks</h2></div>
+          <div><p class="eyebrow">Featured</p><h2 data-content="featured.title">New drops & best picks</h2></div>
           <span class="pill">Popular items</span>
         </div>
         <div id="featured-grid" class="product-grid featured-grid"></div>
@@ -140,13 +140,13 @@
       </section>
 
       <section class="section-shell contact-panel" id="contact">
-        <div><p class="eyebrow">Order now</p><h2>Ready to buy from RSCollection?</h2><p class="muted">Add products to your order list, then send a prepared message through WhatsApp or Instagram. Simple, direct, and customer-friendly.</p></div>
+        <div><p class="eyebrow">Order now</p><h2 data-content="contact.title">Ready to buy from RSCollection?</h2><p class="muted" data-content="contact.subtitle">Add products to your order list, then send a prepared message through WhatsApp or Instagram. Simple, direct, and customer-friendly.</p></div>
         <div class="contact-actions"><button class="button primary" id="contact-cart" type="button">Prepare order</button><a class="button whatsapp" id="whatsapp-link" href="https://wa.me/?text=Hi%20RS%20Collection%2C%20I%20want%20to%20order" target="_blank" rel="noreferrer">Order on WhatsApp</a><a class="button instagram" href="https://instagram.com/rscollection" target="_blank" rel="noreferrer">Message on Instagram</a></div>
       </section>
     </main>
 
     <footer class="site-footer section-shell">
-      <div><strong>RSCollection</strong><p>Dark accessory drops, necklaces, pendants, charms, and fan-friendly pieces.</p></div>
+      <div><strong>RSCollection</strong><p data-content="footer.description">Dark accessory drops, necklaces, pendants, charms, and fan-friendly pieces.</p></div>
       <div><span>Shop</span><a href="#catalog">Catalog</a><a href="#featured">New drops</a></div>
       <div><span>Support</span><a href="#contact">Contact/order</a><a href="#story">Delivery & policy</a><a href="https://instagram.com/rscollection" target="_blank" rel="noreferrer">Instagram</a></div>
     </footer>

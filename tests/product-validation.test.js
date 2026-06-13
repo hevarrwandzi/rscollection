@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.NODE_ENV = 'test';
-const { validateProductPayload, buildProductVisibilityWhere } = require('../index');
+const { validateProductPayload, normalizeColorOptions, normalizeProductImages, buildProductVisibilityWhere } = require('../index');
 
 const validProduct = {
   slug: 'crown-charm-chain',
@@ -16,6 +16,8 @@ const validProduct = {
   stock: 10,
   featured: true,
   image_url: '/assets/products/charm-chain.png',
+  image_urls: ['/assets/products/charm-chain.png', '/assets/products/charm-chain-side.png'],
+  color_options: 'Silver / Black',
   status: 'active',
 };
 
@@ -33,6 +35,28 @@ test('validateProductPayload converts active zero-stock products to sold_out', (
   const result = validateProductPayload({ ...validProduct, stock: 0, status: 'active' });
   assert.equal(result.error, undefined);
   assert.equal(result.payload.status, 'sold_out');
+});
+
+test('validateProductPayload keeps available colors and up to 3 gallery photos', () => {
+  const result = validateProductPayload({
+    ...validProduct,
+    color: 'Silver',
+    color_options: 'Silver / Black',
+    image_urls: ['/assets/products/front.png', '/assets/products/side.png', '/assets/products/detail.png', '/assets/products/extra.png'],
+  });
+
+  assert.equal(result.error, undefined);
+  assert.equal(result.payload.color_options, 'Silver / Black');
+  assert.deepEqual(result.payload.image_urls, [
+    '/assets/products/charm-chain.png',
+    '/assets/products/front.png',
+    '/assets/products/side.png',
+  ]);
+});
+
+test('normalize helpers clean color lists and image galleries', () => {
+  assert.equal(normalizeColorOptions(' Silver / Black ', 'Silver'), 'Silver / Black');
+  assert.deepEqual(normalizeProductImages('/front.png', ['/side.png', '/front.png', '/detail.png']), ['/front.png', '/side.png', '/detail.png']);
 });
 
 test('public product visibility only includes active in-stock products', () => {
