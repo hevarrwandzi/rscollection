@@ -438,10 +438,13 @@ function validateOrderRequestPayload(body) {
   };
 
   if (!payload.customer_name) return { error: "customer name is required" };
+  if (payload.customer_name.length > 255) return { error: "customer name must be 255 characters or less" };
   if (!payload.phone || !/^[+()0-9\s-]{7,24}$/.test(payload.phone)) {
     return { error: "phone/WhatsApp must be a valid contact number" };
   }
   if (!payload.city) return { error: "city/location is required" };
+  if (payload.city.length > 255) return { error: "city/location must be 255 characters or less" };
+  if (payload.notes && payload.notes.length > 1000) return { error: "notes must be 1000 characters or less" };
   if (!payload.items.length) return { error: "order must include at least one item" };
   if (payload.items.some((item) => !Number.isInteger(item.product_id) || item.product_id <= 0 || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
     return { error: "each order item needs a valid product_id and quantity" };
