@@ -6,6 +6,7 @@ const crypto = require("crypto");
 const multer = require("multer");
 const { Pool } = require("pg");
 const rateLimit = require("express-rate-limit");
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 require("dotenv").config();
 
 const app = express();
@@ -27,6 +28,7 @@ const orderLimiter = rateLimit({
 });
 
 const uploadedProductImageDir = path.join(__dirname, "public", "assets", "uploads", "products");
+let s3Client;
 const uploadProductImage = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 3 * 1024 * 1024, files: 1 },
@@ -303,11 +305,50 @@ function buildUploadedProductImagePath(file) {
   const extension = productImageExtension(file?.mimetype);
   if (!extension) return null;
   const filename = `${Date.now()}-${crypto.randomUUID()}${extension}`;
+  const s3Bucket = process.env.S3_BUCKET;
+  const s3PublicBaseUrl = process.env.S3_PUBLIC_BASE_URL?.replace(/\/+$/, "");
+
+  if (s3Bucket && s3PublicBaseUrl) {
+    const key = `products/${filename}`;
+
+    return {
+      filename,
+      key,
+      diskPath: null,
+      publicUrl: `${s3PublicBaseUrl}/${filename}`,
+    };
+  }
+
   return {
     filename,
+    key: null,
     diskPath: path.join(uploadedProductImageDir, filename),
     publicUrl: `/assets/uploads/products/${filename}`,
   };
+}
+
+function getS3Client() {
+  if (!s3Client) {
+    s3Client = new S3Client({ region: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "eu-north-1" });
+  }
+
+  return s3Client;
+}
+
+async function storeProductImage(file, imagePath) {
+  if (imagePath.key) {
+    await getS3Client().send(new PutObjectCommand({
+      Bucket: process.env.S3_BUCKET,
+      Key: imagePath.key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      CacheControl: "public, max-age=31536000, immutable",
+    }));
+    return;
+  }
+
+  await fs.promises.mkdir(uploadedProductImageDir, { recursive: true });
+  await fs.promises.writeFile(imagePath.diskPath, file.buffer, { flag: "wx" });
 }
 
 const defaultSiteContent = [
@@ -838,8 +879,7 @@ app.post("/admin/product-images", requireAdmin, (req, res) => {
         return res.status(400).json({ error: "Unsupported image type" });
       }
 
-      await fs.promises.mkdir(uploadedProductImageDir, { recursive: true });
-      await fs.promises.writeFile(imagePath.diskPath, req.file.buffer, { flag: "wx" });
+      await storeProductImage(req.file, imagePath);
       return res.status(201).json({ image_url: imagePath.publicUrl, filename: imagePath.filename });
     } catch (error) {
       console.error("Failed to upload product image:", error.message);
