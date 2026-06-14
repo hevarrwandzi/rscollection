@@ -131,19 +131,32 @@ const productSelect = `
   FROM products
 `;
 
+// Admin protection uses one secret token from the server environment.
+// The token is NOT stored in the browser or committed to GitHub; it lives in `.env`
+// locally and in production secrets/env on the server. Admin requests must send it as:
+//   Authorization: Bearer <ADMIN_TOKEN>
 function hasValidAdminToken(req) {
   const expectedToken = process.env.ADMIN_TOKEN;
   if (!expectedToken) return false;
 
+  // Read the incoming Authorization header and remove the "Bearer " prefix.
+  // Example header: Authorization: Bearer <ADMIN_TOKEN>
   const authHeader = req.get("authorization") || "";
   const suppliedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
 
+  // Hash both tokens before comparing them. SHA-256 always returns the same-length
+  // Buffer, so timingSafeEqual can safely compare even if the supplied token is
+  // empty, too short, or too long.
   const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
   const suppliedHash = crypto.createHash("sha256").update(suppliedToken).digest();
 
+  // timingSafeEqual avoids leaking tiny timing clues about the secret token value.
   return crypto.timingSafeEqual(expectedHash, suppliedHash);
 }
 
+// Express middleware for admin-only routes.
+// If the token is missing or wrong, the request stops here before changing products,
+// orders, storefront text, images, or any other protected data.
 function requireAdmin(req, res, next) {
   if (!process.env.ADMIN_TOKEN) {
     return res.status(500).json({ error: "Admin protection is not configured" });
