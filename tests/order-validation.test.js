@@ -49,8 +49,29 @@ test('validateOrderRequestPayload rejects non-positive item quantities', () => {
   assert.equal(result.error, 'each order item needs a valid product_id and quantity');
 });
 
+test('validateOrderRequestPayload rejects orders with more than 50 items', () => {
+  const manyItems = Array.from({ length: 51 }, (_, i) => ({ product_id: i + 1, quantity: 1 }));
+  const result = validateOrderRequestPayload({ ...validOrder, items: manyItems });
+  assert.equal(result.error, 'order cannot exceed 50 items');
+});
+
 test('validateOrderStatus accepts the shop-owner workflow statuses only', () => {
   assert.deepEqual(allowedOrderStatuses, ['new', 'contacted', 'confirmed', 'cancelled', 'fulfilled']);
   assert.equal(validateOrderStatus('confirmed').error, undefined);
   assert.equal(validateOrderStatus('shipped').error, 'status must be one of new, contacted, confirmed, cancelled, or fulfilled');
+});
+
+test('validateOrderRequestPayload rejects overly long customer name', () => {
+  const result = validateOrderRequestPayload({ ...validOrder, customer_name: 'a'.repeat(256) });
+  assert.equal(result.error, 'customer name must be 255 characters or less');
+});
+
+test('validateOrderRequestPayload rejects overly long city', () => {
+  const result = validateOrderRequestPayload({ ...validOrder, city: 'a'.repeat(256) });
+  assert.equal(result.error, 'city/location must be 255 characters or less');
+});
+
+test('validateOrderRequestPayload rejects overly long notes', () => {
+  const result = validateOrderRequestPayload({ ...validOrder, notes: 'a'.repeat(1001) });
+  assert.equal(result.error, 'notes must be 1000 characters or less');
 });

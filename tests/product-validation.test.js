@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 process.env.NODE_ENV = 'test';
-const { validateProductPayload, normalizeColorOptions, normalizeProductImages, buildProductVisibilityWhere } = require('../index');
+const { validateProductPayload, normalizeColorOptions, normalizeProductImages, buildProductVisibilityWhere, productSortClause } = require('../index');
 
 const validProduct = {
   slug: 'crown-charm-chain',
@@ -61,4 +61,17 @@ test('normalize helpers clean color lists and image galleries', () => {
 
 test('public product visibility only includes active in-stock products', () => {
   assert.equal(buildProductVisibilityWhere(), "status = 'active' AND stock > 0");
+});
+
+test('productSortClause generates correct ORDER BY sql strings', () => {
+  assert.equal(productSortClause('price-asc'), 'price ASC, featured DESC, created_at DESC');
+  assert.equal(productSortClause('price-desc'), 'price DESC, featured DESC, created_at DESC');
+  assert.equal(productSortClause('name-asc'), 'name ASC');
+
+  // Test fallback/default cases
+  assert.equal(productSortClause('name-desc'), 'featured DESC, created_at DESC');
+  assert.equal(productSortClause('invalid'), 'featured DESC, created_at DESC');
+  assert.equal(productSortClause(undefined), 'featured DESC, created_at DESC');
+  assert.equal(productSortClause(null), 'featured DESC, created_at DESC');
+  assert.equal(productSortClause(''), 'featured DESC, created_at DESC');
 });

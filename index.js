@@ -42,22 +42,46 @@ const uploadProductImage = multer({
   },
 });
 
+// Configure allowed CORS origins
+const allowedOrigins = [
+  "https://rscollection.online",
+  "https://www.rscollection.online",
+  "http://localhost",
+  "http://localhost:3000",
+  "http://127.0.0.1",
+  "http://127.0.0.1:3000",
+];
+
+// Add origins from ALLOWED_ORIGINS env var if present (comma-separated)
+if (process.env.ALLOWED_ORIGINS) {
+  const envOrigins = process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+  allowedOrigins.push(...envOrigins);
+}
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests, or server-to-server)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn(`Blocked CORS request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.disable("x-powered-by");
 app.use(helmet({
   contentSecurityPolicy: false // Optional, disable if we serve inline scripts/images incorrectly otherwise.
 }));
-app.use(cors());
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(limiter);
-
-console.log("Database connection settings:", {
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD ? "******" : undefined,
-});
 
 const pool = new Pool({
   host: process.env.DB_HOST,
@@ -119,10 +143,11 @@ function hasValidAdminToken(req) {
 
   const authHeader = req.get("authorization") || "";
   const suppliedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const expected = Buffer.from(expectedToken);
-  const supplied = Buffer.from(suppliedToken);
 
-  return expected.length === supplied.length && crypto.timingSafeEqual(expected, supplied);
+  const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+  const suppliedHash = crypto.createHash("sha256").update(suppliedToken).digest();
+
+  return crypto.timingSafeEqual(expectedHash, suppliedHash);
 }
 
 function requireAdmin(req, res, next) {
@@ -357,18 +382,90 @@ async function storeProductImage(file, imagePath) {
 }
 
 const defaultSiteContent = [
-  { key: "theme.default", label: "Default theme", section: "Theme", value: "dark", input_type: "theme" },
-  { key: "hero.eyebrow", label: "Hero eyebrow", section: "Hero", value: "Accessory shop story mode", input_type: "text" },
-  { key: "hero.title", label: "Hero title", section: "Hero", value: "Your style needs a main character arc.", input_type: "text" },
-  { key: "hero.subtitle", label: "Hero subtitle", section: "Hero", value: "Browse the drop, pick your item, then message RSCollection on WhatsApp or Instagram. Real photos, clear stock, simple ordering.", input_type: "textarea" },
-  { key: "hero.primary_cta", label: "Hero primary button", section: "Hero", value: "Shop the drop", input_type: "text" },
-  { key: "hero.secondary_cta", label: "Hero secondary button", section: "Hero", value: "See featured picks", input_type: "text" },
-  { key: "catalog.title", label: "Catalog title", section: "Catalog", value: "Shop the drop", input_type: "text" },
-  { key: "catalog.subtitle", label: "Catalog subtitle", section: "Catalog", value: "Search by product name, material, or style. Filter by accessory type and price.", input_type: "textarea" },
-  { key: "featured.title", label: "Featured title", section: "Featured", value: "New drops & best picks", input_type: "text" },
-  { key: "contact.title", label: "Contact title", section: "Contact", value: "Ready to buy from RSCollection?", input_type: "text" },
-  { key: "contact.subtitle", label: "Contact subtitle", section: "Contact", value: "Add products to your order list, then send a prepared message through WhatsApp or Instagram. Simple, direct, and customer-friendly.", input_type: "textarea" },
-  { key: "footer.description", label: "Footer description", section: "Footer", value: "Dark accessory drops, necklaces, pendants, charms, and fan-friendly pieces.", input_type: "textarea" },
+  {
+    key: "theme.default",
+    label: "Default theme",
+    section: "Theme",
+    value: "dark",
+    input_type: "theme",
+  },
+  {
+    key: "hero.eyebrow",
+    label: "Hero eyebrow",
+    section: "Hero",
+    value: "Accessory shop story mode",
+    input_type: "text",
+  },
+  {
+    key: "hero.title",
+    label: "Hero title",
+    section: "Hero",
+    value: "Your style needs a main character arc.",
+    input_type: "text",
+  },
+  {
+    key: "hero.subtitle",
+    label: "Hero subtitle",
+    section: "Hero",
+    value: "Browse the drop, pick your item, then message RSCollection on WhatsApp or Instagram. Real photos, clear stock, simple ordering.",
+    input_type: "textarea",
+  },
+  {
+    key: "hero.primary_cta",
+    label: "Hero primary button",
+    section: "Hero",
+    value: "Shop the drop",
+    input_type: "text",
+  },
+  {
+    key: "hero.secondary_cta",
+    label: "Hero secondary button",
+    section: "Hero",
+    value: "See featured picks",
+    input_type: "text",
+  },
+  {
+    key: "catalog.title",
+    label: "Catalog title",
+    section: "Catalog",
+    value: "Shop the drop",
+    input_type: "text",
+  },
+  {
+    key: "catalog.subtitle",
+    label: "Catalog subtitle",
+    section: "Catalog",
+    value: "Search by product name, material, or style. Filter by accessory type and price.",
+    input_type: "textarea",
+  },
+  {
+    key: "featured.title",
+    label: "Featured title",
+    section: "Featured",
+    value: "New drops & best picks",
+    input_type: "text",
+  },
+  {
+    key: "contact.title",
+    label: "Contact title",
+    section: "Contact",
+    value: "Ready to buy from RSCollection?",
+    input_type: "text",
+  },
+  {
+    key: "contact.subtitle",
+    label: "Contact subtitle",
+    section: "Contact",
+    value: "Add products to your order list, then send a prepared message through WhatsApp or Instagram. Simple, direct, and customer-friendly.",
+    input_type: "textarea",
+  },
+  {
+    key: "footer.description",
+    label: "Footer description",
+    section: "Footer",
+    value: "Dark accessory drops, necklaces, pendants, charms, and fan-friendly pieces.",
+    input_type: "textarea",
+  },
 ];
 
 function buildSiteContentMap(rows) {
@@ -431,6 +528,10 @@ function validateOrderAdminUpdatePayload(body) {
 }
 
 function validateOrderRequestPayload(body) {
+  if (Array.isArray(body.items) && body.items.length > 50) {
+    return { error: "order cannot exceed 50 items" };
+  }
+
   const payload = {
     customer_name: body.customer_name?.toString().trim(),
     phone: body.phone?.toString().trim(),
@@ -443,10 +544,13 @@ function validateOrderRequestPayload(body) {
   };
 
   if (!payload.customer_name) return { error: "customer name is required" };
+  if (payload.customer_name.length > 255) return { error: "customer name must be 255 characters or less" };
   if (!payload.phone || !/^[+()0-9\s-]{7,24}$/.test(payload.phone)) {
     return { error: "phone/WhatsApp must be a valid contact number" };
   }
   if (!payload.city) return { error: "city/location is required" };
+  if (payload.city.length > 255) return { error: "city/location must be 255 characters or less" };
+  if (payload.notes && payload.notes.length > 1000) return { error: "notes must be 1000 characters or less" };
   if (!payload.items.length) return { error: "order must include at least one item" };
   if (payload.items.some((item) => !Number.isInteger(item.product_id) || item.product_id <= 0 || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
     return { error: "each order item needs a valid product_id and quantity" };
@@ -1083,7 +1187,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  requireAdmin,
   app,
+  hasValidAdminToken,
   validateProductPayload,
   normalizeColorOptions,
   normalizeProductImages,
@@ -1098,4 +1204,5 @@ module.exports = {
   defaultSiteContent,
   normalizeSiteContentPayload,
   buildSiteContentMap,
+  sendDatabaseError,
 };
