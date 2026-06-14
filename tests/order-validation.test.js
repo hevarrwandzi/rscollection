@@ -49,6 +49,12 @@ test('validateOrderRequestPayload rejects non-positive item quantities', () => {
   assert.equal(result.error, 'each order item needs a valid product_id and quantity');
 });
 
+test('validateOrderRequestPayload rejects orders with more than 50 items', () => {
+  const manyItems = Array.from({ length: 51 }, (_, i) => ({ product_id: i + 1, quantity: 1 }));
+  const result = validateOrderRequestPayload({ ...validOrder, items: manyItems });
+  assert.equal(result.error, 'order cannot exceed 50 items');
+});
+
 test('validateOrderStatus accepts the shop-owner workflow statuses only', () => {
   assert.deepEqual(allowedOrderStatuses, ['new', 'contacted', 'confirmed', 'cancelled', 'fulfilled']);
   assert.equal(validateOrderStatus('confirmed').error, undefined);

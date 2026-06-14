@@ -426,6 +426,10 @@ function validateOrderAdminUpdatePayload(body) {
 }
 
 function validateOrderRequestPayload(body) {
+  if (Array.isArray(body.items) && body.items.length > 50) {
+    return { error: "order cannot exceed 50 items" };
+  }
+
   const payload = {
     customer_name: body.customer_name?.toString().trim(),
     phone: body.phone?.toString().trim(),
