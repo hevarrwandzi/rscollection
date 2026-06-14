@@ -7,6 +7,7 @@ const multer = require("multer");
 const { Pool } = require("pg");
 const rateLimit = require("express-rate-limit");
 const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const helmet = require("helmet");
 require("dotenv").config();
 
 const app = express();
@@ -41,6 +42,10 @@ const uploadProductImage = multer({
   },
 });
 
+app.disable("x-powered-by");
+app.use(helmet({
+  contentSecurityPolicy: false // Optional, disable if we serve inline scripts/images incorrectly otherwise.
+}));
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
