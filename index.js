@@ -137,10 +137,11 @@ function hasValidAdminToken(req) {
 
   const authHeader = req.get("authorization") || "";
   const suppliedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  const expected = Buffer.from(expectedToken);
-  const supplied = Buffer.from(suppliedToken);
 
-  return expected.length === supplied.length && crypto.timingSafeEqual(expected, supplied);
+  const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+  const suppliedHash = crypto.createHash("sha256").update(suppliedToken).digest();
+
+  return crypto.timingSafeEqual(expectedHash, suppliedHash);
 }
 
 function requireAdmin(req, res, next) {
