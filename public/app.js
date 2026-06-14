@@ -143,14 +143,15 @@ async function saveSiteContent(event) {
   const updates = Array.from(formData.entries()).map(([key, value]) => ({ key, value: value.toString() }));
   setMessage(siteContentMessage, "Saving storefront text...", "neutral");
   try {
-    const saved = [];
-    for (const update of updates) {
-      saved.push(await adminRequestJSON(`/admin/site-content/${encodeURIComponent(update.key)}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: update.value }),
-      }));
-    }
+    const saved = await Promise.all(
+      updates.map((update) =>
+        adminRequestJSON(`/admin/site-content/${encodeURIComponent(update.key)}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ value: update.value }),
+        })
+      )
+    );
     applySiteContent(Object.fromEntries(saved.map((item) => [item.key, item.value])));
     setMessage(siteContentMessage, "Storefront text saved. Refresh the shop to see the public page update.", "success");
   } catch (error) {
