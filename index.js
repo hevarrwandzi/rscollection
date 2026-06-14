@@ -41,7 +41,38 @@ const uploadProductImage = multer({
   },
 });
 
-app.use(cors());
+// Configure allowed CORS origins
+const allowedOrigins = [
+  "https://rscollection.online",
+  "https://www.rscollection.online",
+  "http://localhost",
+  "http://localhost:3000",
+  "http://127.0.0.1",
+  "http://127.0.0.1:3000",
+];
+
+// Add origins from ALLOWED_ORIGINS env var if present (comma-separated)
+if (process.env.ALLOWED_ORIGINS) {
+  const envOrigins = process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim());
+  allowedOrigins.push(...envOrigins);
+}
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl requests, or server-to-server)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.warn(`Blocked CORS request from origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 app.use(limiter);
