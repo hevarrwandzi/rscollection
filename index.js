@@ -1180,6 +1180,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  requireAdmin,
   app,
   validateProductPayload,
   normalizeColorOptions,
