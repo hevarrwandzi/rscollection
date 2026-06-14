@@ -5,9 +5,27 @@ const fs = require("fs");
 const crypto = require("crypto");
 const multer = require("multer");
 const { Pool } = require("pg");
+const rateLimit = require("express-rate-limit");
 require("dotenv").config();
 
 const app = express();
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
+  message: { error: "Too many requests, please try again later." }
+});
+
+const orderLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour window
+  max: 10, // start blocking after 10 requests
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many orders created from this IP, please try again after an hour" }
+});
+
 const uploadedProductImageDir = path.join(__dirname, "public", "assets", "uploads", "products");
 const uploadProductImage = multer({
   storage: multer.memoryStorage(),
@@ -24,6 +42,7 @@ const uploadProductImage = multer({
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+app.use(limiter);
 
 console.log("Database connection settings:", {
   host: process.env.DB_HOST,
@@ -563,7 +582,7 @@ app.get("/products/:id", async (req, res) => {
   }
 });
 
-app.post("/orders", async (req, res) => {
+app.post("/orders", orderLimiter, async (req, res) => {
   const client = await pool.connect();
   try {
     const { payload, error } = validateOrderRequestPayload(req.body);
