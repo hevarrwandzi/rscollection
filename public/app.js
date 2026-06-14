@@ -825,6 +825,87 @@ async function handleOrderAdminUpdate(order, row) {
   } catch (error) { setMessage(formMessage, error.message, "error"); }
 }
 
+async function loadAdminAnalytics() {
+  const container = document.querySelector('[data-admin-page="analytics"]');
+  if (!container) return;
+
+  const totalSalesEl = document.getElementById("analytics-total-sales");
+  const totalOrdersEl = document.getElementById("analytics-total-orders-count");
+  const fulfilledSalesEl = document.getElementById("analytics-fulfilled-sales");
+  const fulfilledOrdersEl = document.getElementById("analytics-fulfilled-orders-count");
+  const inventoryValueEl = document.getElementById("analytics-inventory-value");
+  const inventoryProductsEl = document.getElementById("analytics-inventory-products-count");
+  const topProductsBody = document.getElementById("analytics-top-products");
+  const topCitiesBody = document.getElementById("analytics-top-cities");
+
+  try {
+    const data = await adminRequestJSON("/admin/analytics");
+
+    let totalSales = 0;
+    let totalOrders = 0;
+    let fulfilledSales = 0;
+    let fulfilledOrders = 0;
+
+    data.orders.forEach((stat) => {
+      const rev = Number(stat.revenue || 0);
+      const cnt = Number(stat.count || 0);
+      if (stat.status !== "cancelled") {
+        totalSales += rev;
+        totalOrders += cnt;
+      }
+      if (stat.status === "fulfilled") {
+        fulfilledSales += rev;
+        fulfilledOrders += cnt;
+      }
+    });
+
+    if (totalSalesEl) totalSalesEl.textContent = formatPrice(totalSales);
+    if (totalOrdersEl) totalOrdersEl.textContent = `${totalOrders} request${totalOrders === 1 ? "" : "s"}`;
+    if (fulfilledSalesEl) fulfilledSalesEl.textContent = formatPrice(fulfilledSales);
+    if (fulfilledOrdersEl) fulfilledOrdersEl.textContent = `${fulfilledOrders} fulfilled`;
+    if (inventoryValueEl) inventoryValueEl.textContent = formatPrice(data.stock.total_inventory_value);
+    if (inventoryProductsEl) {
+      inventoryProductsEl.textContent = `${data.stock.active_products} active / ${data.stock.low_stock_products} low / ${data.stock.sold_out_products} sold out`;
+    }
+
+    if (topProductsBody) {
+      topProductsBody.innerHTML = "";
+      if (!data.topProducts.length) {
+        topProductsBody.innerHTML = `<tr><td colspan="3" class="muted text-center">No sales data yet.</td></tr>`;
+      } else {
+        data.topProducts.forEach((item) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td><strong>${escapeHTML(item.product_name)}</strong></td>
+            <td>${item.units_sold} unit${item.units_sold === 1 ? "" : "s"}</td>
+            <td><strong>${formatPrice(item.revenue)}</strong></td>
+          `;
+          topProductsBody.appendChild(tr);
+        });
+      }
+    }
+
+    if (topCitiesBody) {
+      topCitiesBody.innerHTML = "";
+      if (!data.topCities.length) {
+        topCitiesBody.innerHTML = `<tr><td colspan="3" class="muted text-center">No location data yet.</td></tr>`;
+      } else {
+        data.topCities.forEach((item) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td><strong>${escapeHTML(item.city)}</strong></td>
+            <td>${item.order_count} order${item.order_count === 1 ? "" : "s"}</td>
+            <td><strong>${formatPrice(item.revenue)}</strong></td>
+          `;
+          topCitiesBody.appendChild(tr);
+        });
+      }
+    }
+  } catch (error) {
+    setMessage(formMessage, `Analytics error: ${error.message}`, "error");
+  }
+}
+
 function setAdminPage(pageName, { scroll = false } = {}) {
   if (!adminPanelPages.length) return;
   const target = pageName || "add-product";
@@ -838,7 +919,11 @@ function setAdminPage(pageName, { scroll = false } = {}) {
       "edit-text": "Change public homepage text without touching code or hosting.",
       inventory: "Search products, adjust stock, and archive or restore items.",
       orders: "Review customer requests and track follow-up status.",
+      analytics: "View sales metrics, top accessories, and location summaries.",
     })[target] || "Manage RSCollection from this private workspace.";
+  }
+  if (target === "analytics") {
+    loadAdminAnalytics().catch((error) => setMessage(formMessage, error.message, "error"));
   }
   if (scroll) document.querySelector(`[data-admin-page="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -849,7 +934,7 @@ function unlockAdmin() {
   gate?.classList.add("hidden");
   dashboard?.classList.remove("hidden");
   setAdminPage("add-product");
-  Promise.all([loadAdminProducts(), loadAdminOrders(), loadAdminSiteContent()]).catch((error) => setMessage(formMessage, error.message, "error"));
+  Promise.all([loadAdminProducts(), loadAdminOrders(), loadAdminSiteContent(), loadAdminAnalytics()]).catch((error) => setMessage(formMessage, error.message, "error"));
 }
 
 function initStorefront() {
@@ -891,6 +976,31 @@ function initAdmin() {
     control?.addEventListener("change", refreshAdminOrders);
   });
   document.getElementById("refresh-orders")?.addEventListener("click", () => loadAdminOrders().catch((error) => setMessage(formMessage, error.message, "error")));
+  document.getElementById("refresh-analytics")?.addEventListener("click", () => loadAdminAnalytics().catch((error) => setMessage(formMessage, error.message, "error")));
+  const nameInput = document.getElementById("product-name-input");
+  const slugInput = document.getElementById("product-slug-input");
+  nameInput?.addEventListener("input", () => {
+    if (!editingProductId && slugInput) {
+      slugInput.value = nameInput.value
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, "")
+        .trim()
+        .replace(/\s+/g, "-")
+        .replace(/-+/g, "-");
+    }
+  });
+
+  document.querySelectorAll(".clear-img-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.target;
+      const input = document.getElementById(targetId);
+      if (input) {
+        input.value = "";
+        updateImagePreview();
+      }
+    });
+  });
+
   [productForm?.elements.image_url, productForm?.elements.image_url_2, productForm?.elements.image_url_3].forEach((field) => field?.addEventListener("input", updateImagePreview));
   productImageFile?.addEventListener("change", () => {
     if (productImageFile.files?.[0]) {

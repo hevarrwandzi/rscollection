@@ -439,6 +439,7 @@ app.get("/api", (req, res) => {
       "GET /orders (admin token required)",
       "PATCH /orders/:id (admin token required)",
       "PATCH /orders/:id/status (admin token required, status only)",
+      "GET /admin/analytics (admin token required)",
       "POST /products (admin token required)",
       "PUT /products/:id (admin token required)",
       "PATCH /products/:id/stock (admin token required)",
@@ -693,6 +694,73 @@ app.get("/orders", requireAdmin, async (req, res) => {
     res.json(result.rows);
   } catch (error) {
     console.error("Failed to fetch orders:", error.message);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+app.get("/admin/analytics", requireAdmin, async (req, res) => {
+  try {
+    // 1. Order status counts & revenue summary
+    const orderStats = await pool.query(`
+      SELECT 
+        status, 
+        COUNT(*)::int AS count, 
+        COALESCE(SUM(total_price), 0)::numeric AS revenue
+      FROM orders
+      GROUP BY status
+    `);
+
+    // 2. Top-selling products
+    const topProducts = await pool.query(`
+      SELECT 
+        product_name, 
+        SUM(quantity)::int AS units_sold, 
+        SUM(line_total)::numeric AS revenue
+      FROM order_items
+      GROUP BY product_name
+      ORDER BY units_sold DESC
+      LIMIT 5
+    `);
+
+    // 3. Sales by City
+    const topCities = await pool.query(`
+      SELECT 
+        city, 
+        COUNT(*)::int AS order_count, 
+        COALESCE(SUM(total_price), 0)::numeric AS revenue
+      FROM orders
+      WHERE status <> 'cancelled'
+      GROUP BY city
+      ORDER BY revenue DESC
+      LIMIT 5
+    `);
+
+    // 4. Stock Value and Metrics
+    const stockStats = await pool.query(`
+      SELECT
+        COUNT(*)::int AS total_products,
+        COUNT(CASE WHEN status = 'active' THEN 1 END)::int AS active_products,
+        COUNT(CASE WHEN status = 'active' AND stock <= 3 AND stock > 0 THEN 1 END)::int AS low_stock_products,
+        COUNT(CASE WHEN status = 'sold_out' OR stock = 0 THEN 1 END)::int AS sold_out_products,
+        COALESCE(SUM(price * stock), 0)::numeric AS total_inventory_value
+      FROM products
+      WHERE status <> 'archived'
+    `);
+
+    res.json({
+      orders: orderStats.rows,
+      topProducts: topProducts.rows,
+      topCities: topCities.rows,
+      stock: stockStats.rows[0] || {
+        total_products: 0,
+        active_products: 0,
+        low_stock_products: 0,
+        sold_out_products: 0,
+        total_inventory_value: 0
+      }
+    });
+  } catch (error) {
+    console.error("Failed to fetch analytics:", error.message);
     res.status(500).json({ error: "Internal server error" });
   }
 });

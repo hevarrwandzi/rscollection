@@ -40,6 +40,7 @@
             <button class="admin-page-tab" type="button" data-admin-target="edit-text"><span>02</span><strong>Edit text</strong><small>Homepage copy</small></button>
             <button class="admin-page-tab" type="button" data-admin-target="inventory"><span>03</span><strong>Inventory</strong><small>Stock + status</small></button>
             <button class="admin-page-tab" type="button" data-admin-target="orders"><span>04</span><strong>Orders</strong><small>Customer requests</small></button>
+            <button class="admin-page-tab" type="button" data-admin-target="analytics"><span>05</span><strong>Analytics</strong><small>Sales + metrics</small></button>
           </nav>
           <div class="admin-stats">
             <div><span>Total value</span><strong id="stat-value">$0</strong></div>
@@ -74,40 +75,143 @@
 
           <section class="admin-panel-page" data-admin-page="add-product">
             <div class="page-kicker"><span>Page 01</span><strong>Add / edit products</strong></div>
-            <form id="product-form" class="product-form">
-            <input type="hidden" name="product_id" />
-            <div class="form-grid two">
-              <label><span>Slug</span><input name="slug" placeholder="crown-charm-chain" required /></label>
-              <label><span>Name</span><input name="name" placeholder="Crown Charm Chain" required /></label>
-            </div>
-            <div class="form-grid three">
-              <label><span>Material</span><input name="material" placeholder="Alloy chain, mixed charms" required /></label>
-              <label><span>Main color</span><input name="color" placeholder="Silver" required /></label>
-              <label><span>Style</span><input name="style" list="style-options" placeholder="Charm chain" required /><datalist id="style-options"><option value="Charm chain"></option><option value="Pendant"></option><option value="Key pendant"></option><option value="Blade pendant"></option></datalist></label>
-            </div>
-            <div class="form-grid three">
-              <label><span>Available colors</span><input name="color_options" placeholder="Silver / Black" /></label>
-              <label><span>Length / size</span><input name="chain_length_cm" type="number" min="1" placeholder="45" required /></label>
-              <label><span>Price</span><input name="price" type="number" min="0" step="0.01" placeholder="18.00" required /></label>
-              <label><span>Stock</span><input name="stock" type="number" min="0" step="1" placeholder="10" value="0" /></label>
-            </div>
-            <label><span>Status</span><select name="status"><option value="active">Active / visible</option><option value="draft">Draft / hidden</option><option value="sold_out">Sold out / hidden</option><option value="archived">Archived / hidden</option></select></label>
-            <div class="image-url-row gallery-editor">
-              <label><span>Main photo URL</span><input name="image_url" type="text" placeholder="/assets/products/charm-chain.png" /></label>
-              <label><span>Photo 2 URL</span><input name="image_url_2" type="text" placeholder="Optional second product angle" /></label>
-              <label><span>Photo 3 URL</span><input name="image_url_3" type="text" placeholder="Optional third product angle" /></label>
-              <div class="image-preview gallery-preview" aria-label="Product photo previews"><img id="image-preview" src="/assets/products/charm-chain.png" alt="Main product preview" /><img id="image-preview-2" src="/assets/products/charm-chain.png" alt="Second product preview" /><img id="image-preview-3" src="/assets/products/charm-chain.png" alt="Third product preview" /></div>
-            </div>
-            <div class="upload-row">
-              <label class="file-picker"><span>Upload product image</span><input id="product-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" /></label>
-              <button class="button ghost" id="upload-product-image" type="button">Upload image</button>
-              <small>JPG, PNG, WebP, or GIF. Max 3MB. Upload up to 3 photos per accessory; each upload fills the next empty photo slot.</small>
-            </div>
-            <label><span>Description</span><textarea name="description" placeholder="Short selling text: what it is, the vibe, outfit/cosplay use, and anything customers should know." required></textarea></label>
-            <div class="form-footer">
-              <label class="check-card inline"><input name="featured" type="checkbox" /><span>Mark as featured</span></label>
-              <div class="form-actions"><button class="button ghost hidden" id="cancel-edit" type="button">Cancel edit</button><button class="button primary" id="submit-button" type="submit">Create product</button></div>
-            </div>
+            <form id="product-form" class="product-form modern-form">
+              <input type="hidden" name="product_id" />
+              
+              <div class="modern-form-grid">
+                <!-- Left Column: Details -->
+                <div class="form-section-left">
+                  <h3 class="form-section-title">Product Details</h3>
+                  
+                  <div class="form-grid two">
+                    <label>
+                      <span>Product Name</span>
+                      <input name="name" id="product-name-input" placeholder="Crown Charm Chain" required />
+                    </label>
+                    <label>
+                      <span>URL Slug</span>
+                      <input name="slug" id="product-slug-input" placeholder="crown-charm-chain" required />
+                    </label>
+                  </div>
+
+                  <label>
+                    <span>Description</span>
+                    <textarea name="description" placeholder="Write a short description about the vibe, outfit matching, cosplay use..." required></textarea>
+                  </label>
+
+                  <div class="form-grid three">
+                    <label>
+                      <span>Material</span>
+                      <input name="material" placeholder="Alloy chain, beads" required />
+                    </label>
+                    <label>
+                      <span>Main Color</span>
+                      <input name="color" placeholder="Silver" required />
+                    </label>
+                    <label>
+                      <span>Style Type</span>
+                      <input name="style" list="style-options" placeholder="Charm chain" required />
+                      <datalist id="style-options">
+                        <option value="Charm chain"></option>
+                        <option value="Pendant"></option>
+                        <option value="Key pendant"></option>
+                        <option value="Blade pendant"></option>
+                      </datalist>
+                    </label>
+                  </div>
+
+                  <div class="form-grid three">
+                    <label>
+                      <span>Available Colors</span>
+                      <input name="color_options" placeholder="Silver / Black" />
+                    </label>
+                    <label>
+                      <span>Length (cm)</span>
+                      <input name="chain_length_cm" type="number" min="1" placeholder="45" required />
+                    </label>
+                    <label>
+                      <span>Status</span>
+                      <select name="status">
+                        <option value="active">🟢 Active / Public</option>
+                        <option value="draft">🟡 Draft / Hidden</option>
+                        <option value="sold_out">🔴 Sold Out / Hidden</option>
+                        <option value="archived">archived / Hidden</option>
+                      </select>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Right Column: Media & Pricing -->
+                <div class="form-section-right">
+                  <h3 class="form-section-title">Media & Stock</h3>
+                  
+                  <div class="form-grid two">
+                    <label>
+                      <span>Price ($)</span>
+                      <input name="price" type="number" min="0" step="0.01" placeholder="18.00" required />
+                    </label>
+                    <label>
+                      <span>Stock Quantity</span>
+                      <input name="stock" type="number" min="0" step="1" placeholder="10" value="0" />
+                    </label>
+                  </div>
+
+                  <div class="media-management-card">
+                    <span>Product Gallery (Max 3)</span>
+                    
+                    <div class="image-uploader-zone">
+                      <div class="file-picker-wrapper">
+                        <input id="product-image-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" />
+                        <div class="upload-btn-wrapper">
+                          <button class="button ghost small" id="upload-product-image" type="button">Upload image</button>
+                        </div>
+                      </div>
+                      <small class="upload-tip">Supports JPG, PNG, WebP, GIF up to 3MB.</small>
+                    </div>
+
+                    <div class="gallery-inputs-grid">
+                      <div class="gallery-input-item">
+                        <span>Photo 1 (Main)</span>
+                        <input name="image_url" id="image-url-1" type="text" placeholder="/assets/products/charm-chain.png" />
+                      </div>
+                      <div class="gallery-input-item">
+                        <span>Photo 2</span>
+                        <input name="image_url_2" id="image-url-2" type="text" placeholder="Optional photo URL" />
+                      </div>
+                      <div class="gallery-input-item">
+                        <span>Photo 3</span>
+                        <input name="image_url_3" id="image-url-3" type="text" placeholder="Optional photo URL" />
+                      </div>
+                    </div>
+
+                    <div class="gallery-previews-container">
+                      <div class="preview-slot">
+                        <img id="image-preview" src="/assets/products/charm-chain.png" alt="Preview 1" />
+                        <button type="button" class="clear-img-btn" data-target="image-url-1">&times;</button>
+                      </div>
+                      <div class="preview-slot">
+                        <img id="image-preview-2" src="/assets/products/charm-chain.png" alt="Preview 2" />
+                        <button type="button" class="clear-img-btn" data-target="image-url-2">&times;</button>
+                      </div>
+                      <div class="preview-slot">
+                        <img id="image-preview-3" src="/assets/products/charm-chain.png" alt="Preview 3" />
+                        <button type="button" class="clear-img-btn" data-target="image-url-3">&times;</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-footer-modern">
+                <label class="check-card inline featured-check">
+                  <input name="featured" type="checkbox" />
+                  <span>⭐ Mark as Featured Accessory</span>
+                </label>
+                <div class="form-actions">
+                  <button class="button ghost hidden" id="cancel-edit" type="button">Cancel Edit</button>
+                  <button class="button primary large" id="submit-button" type="submit">Create Product</button>
+                </div>
+              </div>
             </form>
             <p id="form-message" class="form-message" role="status"></p>
           </section>
@@ -137,6 +241,75 @@
               <label><span>Sort</span><select id="admin-sort"><option value="newest">Newest first</option><option value="stock-asc">Lowest stock</option><option value="price-desc">Highest price</option><option value="name-asc">Name A-Z</option></select></label>
             </form>
             <div id="inventory-list" class="inventory-list"></div>
+            </div>
+          </section>
+
+          <section class="admin-panel-page" data-admin-page="analytics">
+            <div class="page-kicker"><span>Page 05</span><strong>Store Analytics</strong></div>
+            <div class="analytics-panel">
+              <div class="section-head tight">
+                <div>
+                  <p class="eyebrow">Analytics</p>
+                  <h3>Performance Overview</h3>
+                </div>
+                <button class="button ghost" id="refresh-analytics" type="button">Refresh Metrics</button>
+              </div>
+              
+              <div class="analytics-grid">
+                <div class="analytics-card">
+                  <h4>Total Sales (Excl. Cancelled)</h4>
+                  <div class="analytics-val" id="analytics-total-sales">$0.00</div>
+                  <span class="muted" id="analytics-total-orders-count">0 orders</span>
+                </div>
+                <div class="analytics-card">
+                  <h4>Fulfilled Revenue</h4>
+                  <div class="analytics-val" id="analytics-fulfilled-sales" style="color: var(--green, #16834a);">$0.00</div>
+                  <span class="muted" id="analytics-fulfilled-orders-count">0 fulfilled</span>
+                </div>
+                <div class="analytics-card">
+                  <h4>Total Inventory Value</h4>
+                  <div class="analytics-val" id="analytics-inventory-value">$0.00</div>
+                  <span class="muted" id="analytics-inventory-products-count">0 active products</span>
+                </div>
+              </div>
+
+              <div class="analytics-sections">
+                <div class="analytics-section-col">
+                  <h4>Top 5 Selling Accessories</h4>
+                  <div class="table-wrapper">
+                    <table class="analytics-table">
+                      <thead>
+                        <tr>
+                          <th>Product Name</th>
+                          <th>Units Sold</th>
+                          <th>Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody id="analytics-top-products">
+                        <tr><td colspan="3" class="muted text-center">No sales data yet.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div class="analytics-section-col">
+                  <h4>Top 5 Sales by City</h4>
+                  <div class="table-wrapper">
+                    <table class="analytics-table">
+                      <thead>
+                        <tr>
+                          <th>City / Location</th>
+                          <th>Orders</th>
+                          <th>Revenue</th>
+                        </tr>
+                      </thead>
+                      <tbody id="analytics-top-cities">
+                        <tr><td colspan="3" class="muted text-center">No location data yet.</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
         </div>
