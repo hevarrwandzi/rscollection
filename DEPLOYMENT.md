@@ -47,6 +47,20 @@ CADDY_SITE=rscollection.online, www.rscollection.online
 
 The app uses the EC2 IAM role for S3 uploads. Do not add AWS access keys to `.env`.
 
+## Server access
+
+The EC2 instance is registered with AWS Systems Manager Session Manager.
+Prefer SSM over SSH for day-to-day operations:
+
+```bash
+aws ssm start-session \
+  --profile 'my acc 2' \
+  --region eu-north-1 \
+  --target i-07d8eea9998a024c9
+```
+
+The EC2 instance profile has `AmazonSSMManagedInstanceCore` attached and the SSM agent runs as a snap service.
+
 ## Deploy manually
 
 From the EC2 project directory:
@@ -75,6 +89,18 @@ Expected health response contains:
 ```json
 {"status":"ok","database":"connected"}
 ```
+
+## Automated deployment
+
+GitHub Actions deploys from `main` after the `CI` workflow succeeds, or manually through `workflow_dispatch`.
+
+The deployment uses GitHub OIDC to assume this AWS role:
+
+```text
+arn:aws:iam::798256686327:role/rscollection-github-actions-deploy-role
+```
+
+The workflow sends an `AWS-RunShellScript` SSM command to the EC2 instance. The remote command runs as the `ubuntu` user, pulls `origin/main`, rebuilds Docker Compose, and checks local health/products endpoints before reporting success.
 
 ## Backup and restore
 

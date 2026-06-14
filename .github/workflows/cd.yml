@@ -1,0 +1,111 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: eu-north-1
+  AWS_ROLE_ARN: arn:aws:iam::798256686327:role/rscollection-github-actions-deploy-role
+  INSTANCE_ID: i-07d8eea9998a024c9
+  DEPLOY_PATH: /home/ubuntu/pro/rscollection
+
+jobs:
+  deploy:
+    name: Deploy to production server via SSM
+    runs-on: ubuntu-latest
+
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Send deploy command through SSM
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 > /tmp/rscollection-deploy-params.json <<'PY'
+          import json
+
+          deploy_script = r'''sudo -u ubuntu -H bash <<'DEPLOY'
+          set -euo pipefail
+
+          cd /home/ubuntu/pro/rscollection
+
+          git fetch origin main
+          git reset --hard origin/main
+
+          docker compose config --quiet
+          docker compose up -d --build
+
+          for i in $(seq 1 40); do
+            if curl -fsS http://localhost/health | grep -q '"status":"ok"' && \
+               curl -fsS http://localhost/products | grep -q 'Crown Charm Chain'; then
+              echo "Deploy healthy"
+              docker compose ps
+              exit 0
+            fi
+
+            echo "Waiting for app health... attempt ${i}/40"
+            docker compose ps
+            sleep 3
+          done
+
+          echo "Deploy failed health check"
+          docker compose logs --tail=200
+          exit 1
+          DEPLOY'''
+
+          json.dump({"commands": [deploy_script]}, open("/tmp/rscollection-deploy-params.json", "w"))
+          PY
+
+          COMMAND_ID="$(aws ssm send-command \
+            --region "$AWS_REGION" \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "RSCollection GitHub Actions deployment" \
+            --parameters file:///tmp/rscollection-deploy-params.json \
+            --query 'Command.CommandId' \
+            --output text)"
+
+          echo "command_id=$COMMAND_ID" >> "$GITHUB_OUTPUT"
+          echo "SSM command: $COMMAND_ID"
+
+      - name: Wait for deploy command
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws ssm wait command-executed \
+            --region "$AWS_REGION" \
+            --command-id "${{ steps.deploy.outputs.command_id }}" \
+            --instance-id "$INSTANCE_ID"
+
+      - name: Print deploy output
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          aws ssm get-command-invocation \
+            --region "$AWS_REGION" \
+            --command-id "${{ steps.deploy.outputs.command_id }}" \
+            --instance-id "$INSTANCE_ID" \
+            --query '{Status:Status,Stdout:StandardOutputContent,Stderr:StandardErrorContent}' \
+            --output json
