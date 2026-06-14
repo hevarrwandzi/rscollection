@@ -56,14 +56,14 @@ jobs:
           docker compose up -d --build
 
           for i in $(seq 1 40); do
-            if curl -fsS http://localhost/health | grep -q '"status":"ok"' && \
-               curl -fsS http://localhost/products | grep -q 'Crown Charm Chain'; then
+            if curl -fsS https://rscollection.online/health | grep -q '"status":"ok"' &&
+               curl -fsS https://rscollection.online/products | grep -q 'Crown Charm Chain'; then
               echo "Deploy healthy"
               docker compose ps
               exit 0
             fi
 
-            echo "Waiting for app health... attempt ${i}/40"
+            echo "Waiting for public app health... attempt ${i}/40"
             docker compose ps
             sleep 3
           done
@@ -92,10 +92,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          aws ssm wait command-executed \
-            --region "$AWS_REGION" \
-            --command-id "${{ steps.deploy.outputs.command_id }}" \
-            --instance-id "$INSTANCE_ID"
+
+          for i in $(seq 1 90); do
+            STATUS="$(aws ssm get-command-invocation \
+              --region "$AWS_REGION" \
+              --command-id "${{ steps.deploy.outputs.command_id }}" \
+              --instance-id "$INSTANCE_ID" \
+              --query 'Status' \
+              --output text)"
+
+            echo "SSM status: ${STATUS} (${i}/90)"
+
+            case "$STATUS" in
+              Success)
+                exit 0
+                ;;
+              Failed|Cancelled|TimedOut|Cancelling)
+                exit 1
+                ;;
+            esac
+
+            sleep 5
+          done
+
+          echo "SSM deploy command did not finish before timeout"
+          exit 1
 
       - name: Print deploy output
         if: always()
