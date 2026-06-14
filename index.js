@@ -922,56 +922,140 @@ app.get("/admin/analytics", requireAdmin, async (req, res) => {
   }
 });
 
+async function updateOrderAndAdjustStock(client, orderId, fieldsToUpdate) {
+  // 1. Fetch current order status and lock the row
+  const orderResult = await client.query(
+    "SELECT status FROM orders WHERE id = $1 FOR UPDATE",
+    [orderId]
+  );
+  if (orderResult.rows.length === 0) {
+    return { error: "Order not found", status: 404 };
+  }
+
+  const oldStatus = orderResult.rows[0].status;
+  const newStatus = fieldsToUpdate.status;
+
+  // If status is changing, handle stock adjustment
+  if (newStatus && newStatus !== oldStatus) {
+    // Fetch order items
+    const itemsResult = await client.query(
+      "SELECT product_id, quantity, product_name FROM order_items WHERE order_id = $1",
+      [orderId]
+    );
+    const items = itemsResult.rows;
+
+    if (oldStatus !== "cancelled" && newStatus === "cancelled") {
+      // Transitioning to cancelled: Restore stock for all items
+      for (const item of items) {
+        if (item.product_id) {
+          // Lock product row to prevent concurrent updates
+          await client.query("SELECT id FROM products WHERE id = $1 FOR UPDATE", [item.product_id]);
+          await client.query(
+            `UPDATE products
+             SET stock = stock + $1,
+                 status = CASE WHEN status = 'sold_out' AND stock + $1 > 0 THEN 'active' ELSE status END
+             WHERE id = $2`,
+            [item.quantity, item.product_id]
+          );
+        }
+      }
+    } else if (oldStatus === "cancelled" && newStatus !== "cancelled") {
+      // Transitioning from cancelled back to active: Deduct stock (verify availability)
+      for (const item of items) {
+        if (item.product_id) {
+          // Lock and get product details
+          const productResult = await client.query(
+            "SELECT name, stock FROM products WHERE id = $1 FOR UPDATE",
+            [item.product_id]
+          );
+          if (productResult.rows.length === 0) {
+            return { error: `Product in order item "${item.product_name}" no longer exists`, status: 400 };
+          }
+          const product = productResult.rows[0];
+          if (product.stock < item.quantity) {
+            return {
+              error: `Insufficient stock to restore order: "${product.name}" only has ${product.stock} in stock (requested ${item.quantity})`,
+              status: 400
+            };
+          }
+          await client.query(
+            `UPDATE products
+             SET stock = stock - $1,
+                 status = CASE WHEN stock - $1 <= 0 THEN 'sold_out' ELSE status END
+             WHERE id = $2`,
+            [item.quantity, item.product_id]
+          );
+        }
+      }
+    }
+  }
+
+  // Update order fields
+  const fields = [];
+  const values = [];
+  Object.entries(fieldsToUpdate).forEach(([key, value]) => {
+    values.push(value);
+    fields.push(`${key} = $${values.length}`);
+  });
+  values.push(orderId);
+
+  const updateResult = await client.query(
+    `UPDATE orders
+     SET ${fields.join(", ")}
+     WHERE id = $${values.length}
+     RETURNING *`,
+    values
+  );
+
+  return { order: updateResult.rows[0] };
+}
+
 app.patch("/orders/:id/status", requireAdmin, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
     const status = req.body.status?.toString().trim();
     const validation = validateOrderStatus(status);
     if (validation.error) return res.status(400).json({ error: validation.error });
 
-    const result = await pool.query(
-      `UPDATE orders
-       SET status = $1
-       WHERE id = $2
-       RETURNING *`,
-      [status, id]
-    );
-
-    if (!result.rows.length) return res.status(404).json({ error: "Order not found" });
-    res.json(result.rows[0]);
+    await client.query("BEGIN");
+    const result = await updateOrderAndAdjustStock(client, id, { status });
+    if (result.error) {
+      await client.query("ROLLBACK");
+      return res.status(result.status || 500).json({ error: result.error });
+    }
+    await client.query("COMMIT");
+    res.json(result.order);
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Failed to update order status:", error.message);
     res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 });
 
 app.patch("/orders/:id", requireAdmin, async (req, res) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
     const { payload, error } = validateOrderAdminUpdatePayload(req.body || {});
     if (error) return res.status(400).json({ error });
 
-    const fields = [];
-    const values = [];
-    Object.entries(payload).forEach(([key, value]) => {
-      values.push(value);
-      fields.push(`${key} = $${values.length}`);
-    });
-    values.push(id);
-
-    const result = await pool.query(
-      `UPDATE orders
-       SET ${fields.join(", ")}
-       WHERE id = $${values.length}
-       RETURNING *`,
-      values
-    );
-
-    if (!result.rows.length) return res.status(404).json({ error: "Order not found" });
-    res.json(result.rows[0]);
+    await client.query("BEGIN");
+    const result = await updateOrderAndAdjustStock(client, id, payload);
+    if (result.error) {
+      await client.query("ROLLBACK");
+      return res.status(result.status || 500).json({ error: result.error });
+    }
+    await client.query("COMMIT");
+    res.json(result.order);
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     console.error("Failed to update order:", error.message);
     res.status(500).json({ error: "Internal server error" });
+  } finally {
+    client.release();
   }
 });
 
@@ -1212,4 +1296,5 @@ module.exports = {
   normalizeSiteContentPayload,
   buildSiteContentMap,
   sendDatabaseError,
+  updateOrderAndAdjustStock,
 };

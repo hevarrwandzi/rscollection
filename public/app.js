@@ -762,9 +762,37 @@ function renderOrders(orders) {
       </div>
       <div class="order-actions"><button class="button ghost small" data-role="save-order" type="button">Save owner update</button><a class="button whatsapp small" href="${buildCustomerContactUrl(order)}" target="_blank" rel="noreferrer">WhatsApp customer</a></div>
     `;
-    row.querySelector('[data-role="order-status"]').value = order.status;
-    row.querySelector('[data-role="order-priority"]').value = priority;
-    row.querySelector('[data-role="save-order"]').addEventListener("click", () => handleOrderAdminUpdate(order, row));
+    const statusSelect = row.querySelector('[data-role="order-status"]');
+    const prioritySelect = row.querySelector('[data-role="order-priority"]');
+    const adminNoteText = row.querySelector('[data-role="admin-note"]');
+    const saveBtn = row.querySelector('[data-role="save-order"]');
+
+    statusSelect.value = order.status;
+    prioritySelect.value = priority;
+
+    const checkDirty = () => {
+      const isDirty = statusSelect.value !== order.status ||
+                      prioritySelect.value !== priority ||
+                      adminNoteText.value !== (order.admin_note || "");
+      if (isDirty) {
+        row.classList.add("unsaved");
+        saveBtn.classList.remove("ghost");
+        saveBtn.classList.add("primary");
+        saveBtn.textContent = "Save Changes *";
+      } else {
+        row.classList.remove("unsaved");
+        saveBtn.classList.add("ghost");
+        saveBtn.classList.remove("primary");
+        saveBtn.textContent = "Save owner update";
+      }
+    };
+
+    [statusSelect, prioritySelect, adminNoteText].forEach(control => {
+      control?.addEventListener("input", checkDirty);
+      control?.addEventListener("change", checkDirty);
+    });
+
+    saveBtn.addEventListener("click", () => handleOrderAdminUpdate(order, row));
     ordersList.appendChild(row);
   });
 }
@@ -808,11 +836,22 @@ async function handleRestoreProduct(product) {
 }
 
 async function handleOrderAdminUpdate(order, row) {
+  const statusSelect = row.querySelector('[data-role="order-status"]');
+  const prioritySelect = row.querySelector('[data-role="order-priority"]');
+  const adminNoteText = row.querySelector('[data-role="admin-note"]');
+  const saveBtn = row.querySelector('[data-role="save-order"]');
+
   const payload = {
-    status: row.querySelector('[data-role="order-status"]')?.value,
-    priority: row.querySelector('[data-role="order-priority"]')?.value,
-    admin_note: row.querySelector('[data-role="admin-note"]')?.value,
+    status: statusSelect?.value,
+    priority: prioritySelect?.value,
+    admin_note: adminNoteText?.value,
   };
+
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Saving...";
+  }
+
   setMessage(formMessage, `Saving order #${order.id} owner update...`, "neutral");
   try {
     const updated = await adminRequestJSON(`/orders/${order.id}`, {
@@ -823,7 +862,13 @@ async function handleOrderAdminUpdate(order, row) {
     adminOrders = adminOrders.map((item) => item.id === updated.id ? { ...item, ...updated } : item);
     setMessage(formMessage, `Order #${order.id} saved.`, "success");
     refreshAdminOrders();
-  } catch (error) { setMessage(formMessage, error.message, "error"); }
+  } catch (error) {
+    setMessage(formMessage, error.message, "error");
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Save Changes *";
+    }
+  }
 }
 
 async function loadAdminAnalytics() {
@@ -955,6 +1000,10 @@ function initStorefront() {
   Promise.all([loadSiteContent(), loadProducts(), loadFeatured()]).catch((error) => { console.error(error); if (resultsSummary) resultsSummary.textContent = "Could not load products"; });
 }
 
+function hasUnsavedChanges() {
+  return document.querySelector(".unsaved") !== null;
+}
+
 function initAdmin() {
   const tokenForm = document.getElementById("admin-token-form");
   const tokenInput = document.getElementById("admin-token");
@@ -1010,7 +1059,14 @@ function initAdmin() {
   });
   uploadProductImageButton?.addEventListener("click", uploadSelectedProductImage);
   siteContentForm?.addEventListener("submit", saveSiteContent);
-  adminPageTabs.forEach((tab) => tab.addEventListener("click", () => setAdminPage(tab.dataset.adminTarget, { scroll: true })));
+  adminPageTabs.forEach((tab) => tab.addEventListener("click", (event) => {
+    if (hasUnsavedChanges()) {
+      const discard = window.confirm("You have unsaved order changes. Discard them?");
+      if (!discard) return;
+      document.querySelectorAll(".unsaved").forEach(el => el.classList.remove("unsaved"));
+    }
+    setAdminPage(tab.dataset.adminTarget, { scroll: true });
+  }));
   updateImagePreview();
   cancelEditButton?.addEventListener("click", () => { resetAdminForm(); setMessage(formMessage, "Edit cancelled.", "neutral"); });
   productForm?.addEventListener("submit", async (event) => {
