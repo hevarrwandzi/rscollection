@@ -1181,6 +1181,7 @@ if (require.main === module) {
 
 module.exports = {
   app,
+  hasValidAdminToken,
   validateProductPayload,
   normalizeColorOptions,
   normalizeProductImages,
