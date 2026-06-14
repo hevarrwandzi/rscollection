@@ -54,3 +54,18 @@ test('validateOrderStatus accepts the shop-owner workflow statuses only', () => 
   assert.equal(validateOrderStatus('confirmed').error, undefined);
   assert.equal(validateOrderStatus('shipped').error, 'status must be one of new, contacted, confirmed, cancelled, or fulfilled');
 });
+
+test('validateOrderRequestPayload rejects overly long customer name', () => {
+  const result = validateOrderRequestPayload({ ...validOrder, customer_name: 'a'.repeat(256) });
+  assert.equal(result.error, 'customer name must be 255 characters or less');
+});
+
+test('validateOrderRequestPayload rejects overly long city', () => {
+  const result = validateOrderRequestPayload({ ...validOrder, city: 'a'.repeat(256) });
+  assert.equal(result.error, 'city/location must be 255 characters or less');
+});
+
+test('validateOrderRequestPayload rejects overly long notes', () => {
+  const result = validateOrderRequestPayload({ ...validOrder, notes: 'a'.repeat(1001) });
+  assert.equal(result.error, 'notes must be 1000 characters or less');
+});
