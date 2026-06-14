@@ -1195,4 +1195,5 @@ module.exports = {
   defaultSiteContent,
   normalizeSiteContentPayload,
   buildSiteContentMap,
+  sendDatabaseError,
 };
