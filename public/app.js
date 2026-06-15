@@ -61,6 +61,7 @@ let editingProductId = null;
 let cart = readCart();
 let adminProducts = [];
 let adminOrders = [];
+let activeTransitionId = null;
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>'"]/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char]));
@@ -274,9 +275,52 @@ function createProductCard(product) {
   }
   stockLine.textContent = stock.text;
   stockLine.dataset.tone = stock.tone;
-  detailsButton.addEventListener("click", () => openProductDetail(product));
+
+  detailsButton.addEventListener("click", (event) => {
+    const card = event.currentTarget.closest(".product-card");
+    const img = card?.querySelector(".product-image");
+
+    if (document.startViewTransition && img) {
+      img.style.viewTransitionName = "modal-product-img";
+      const transition = document.startViewTransition(() => {
+        openProductDetail(product);
+      });
+      transition.finished.finally(() => {
+        img.style.viewTransitionName = "";
+        const modalImg = productDetail?.querySelector(".detail-gallery img");
+        if (modalImg) modalImg.style.viewTransitionName = "";
+      });
+    } else {
+      openProductDetail(product);
+    }
+  });
+
   quickOrderButton?.addEventListener("click", () => openWhatsAppOrder(product));
-  addButton.addEventListener("click", () => addToCart(product));
+
+  addButton.addEventListener("click", (event) => {
+    const card = event.currentTarget.closest(".product-card");
+    const img = card?.querySelector(".product-image");
+
+    const update = () => {
+      addToCart(product);
+    };
+
+    if (document.startViewTransition && img) {
+      img.style.viewTransitionName = "active-product-img";
+      activeTransitionId = product.id;
+      const transition = document.startViewTransition(() => {
+        update();
+      });
+      transition.finished.finally(() => {
+        img.style.viewTransitionName = "";
+        activeTransitionId = null;
+        renderCart();
+      });
+    } else {
+      update();
+    }
+  });
+
   addButton.disabled = Number(product.stock || 0) <= 0;
   addButton.textContent = Number(product.stock || 0) <= 0 ? "Unavailable" : "Add";
   if (quickOrderButton) quickOrderButton.disabled = Number(product.stock || 0) <= 0;
@@ -301,7 +345,7 @@ function openProductDetail(product) {
   const stock = stockLabel(product);
   const images = productImages(product);
   const colors = colorOptions(product);
-  const gallery = (images.length ? images : [fallbackImage]).map((src, index) => `<img src="${escapeHTML(src)}" alt="${escapeHTML(product.name)} photo ${index + 1}" onerror="this.src='${fallbackImage}'" />`).join("");
+  const gallery = (images.length ? images : [fallbackImage]).map((src, index) => `<img src="${escapeHTML(src)}" alt="${escapeHTML(product.name)} photo ${index + 1}" onerror="this.src='${fallbackImage}'" ${index === 0 ? 'style="view-transition-name: modal-product-img;"' : ''} />`).join("");
   const colorBadges = colors.length ? `<div class="color-options detail-colors">${colors.map((color) => `<span>${escapeHTML(color)}</span>`).join("")}</div>` : "";
   productDetail.innerHTML = `
     <div class="detail-gallery">${gallery}</div>
@@ -358,7 +402,7 @@ function renderCart() {
     const row = document.createElement("article");
     row.className = "cart-row";
     row.innerHTML = `
-      <img src="${escapeHTML(item.image_url || fallbackImage)}" alt="${escapeHTML(item.name)}" />
+      <img src="${escapeHTML(item.image_url || fallbackImage)}" alt="${escapeHTML(item.name)}" ${item.id === activeTransitionId ? 'style="view-transition-name: active-product-img;"' : ''} />
       <div class="cart-item-details">
         <strong>${escapeHTML(item.name)}</strong>
         <div class="cart-item-price-qty">
@@ -397,15 +441,29 @@ function renderCart() {
 
 function openCart() {
   if (!cartDrawer) return;
-  cartDrawer.classList.add("open");
-  cartDrawer.setAttribute("aria-hidden", "false");
-  drawerBackdrop?.classList.add("open");
+  const update = () => {
+    cartDrawer.classList.add("open");
+    cartDrawer.setAttribute("aria-hidden", "false");
+    drawerBackdrop?.classList.add("open");
+  };
+  if (document.startViewTransition) {
+    document.startViewTransition(update);
+  } else {
+    update();
+  }
 }
 
 function closeCart() {
-  cartDrawer?.classList.remove("open");
-  cartDrawer?.setAttribute("aria-hidden", "true");
-  drawerBackdrop?.classList.remove("open");
+  const update = () => {
+    cartDrawer?.classList.remove("open");
+    cartDrawer?.setAttribute("aria-hidden", "true");
+    drawerBackdrop?.classList.remove("open");
+  };
+  if (document.startViewTransition) {
+    document.startViewTransition(update);
+  } else {
+    update();
+  }
 }
 
 async function copyOrderSummary() {
@@ -531,6 +589,7 @@ async function loadProducts(queryString = "") {
   const products = await requestJSON(`/products${queryString}`);
   renderProducts(productsGrid, products, "No RSCollection products matched those filters.");
   if (resultsSummary) resultsSummary.textContent = `${products.length} product${products.length === 1 ? "" : "s"} shown`;
+  return products;
 }
 
 async function loadAdminProducts() {
@@ -981,25 +1040,33 @@ async function loadAdminAnalytics() {
 }
 
 function setAdminPage(pageName, { scroll = false } = {}) {
-  if (!adminPanelPages.length) return;
-  const target = pageName || "add-product";
-  adminPanelPages.forEach((panel) => panel.classList.toggle("active", panel.dataset.adminPage === target));
-  adminPageTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.adminTarget === target));
-  const activeTab = Array.from(adminPageTabs).find((tab) => tab.dataset.adminTarget === target);
-  if (activeTab && adminTitle) adminTitle.textContent = activeTab.querySelector("strong")?.textContent || "Admin workspace";
-  if (adminSubtitle) {
-    adminSubtitle.textContent = ({
-      "add-product": "Create new products or edit an item loaded from inventory.",
-      "edit-text": "Change public homepage text without touching code or hosting.",
-      inventory: "Search products, adjust stock, and archive or restore items.",
-      orders: "Review customer requests and track follow-up status.",
-      analytics: "View sales metrics, top accessories, and location summaries.",
-    })[target] || "Manage RSCollection from this private workspace.";
+  const update = () => {
+    if (!adminPanelPages.length) return;
+    const target = pageName || "add-product";
+    adminPanelPages.forEach((panel) => panel.classList.toggle("active", panel.dataset.adminPage === target));
+    adminPageTabs.forEach((tab) => tab.classList.toggle("active", tab.dataset.adminTarget === target));
+    const activeTab = Array.from(adminPageTabs).find((tab) => tab.dataset.adminTarget === target);
+    if (activeTab && adminTitle) adminTitle.textContent = activeTab.querySelector("strong")?.textContent || "Admin workspace";
+    if (adminSubtitle) {
+      adminSubtitle.textContent = ({
+        "add-product": "Create new products or edit an item loaded from inventory.",
+        "edit-text": "Change public homepage text without touching code or hosting.",
+        inventory: "Search products, adjust stock, and archive or restore items.",
+        orders: "Review customer requests and track follow-up status.",
+        analytics: "View sales metrics, top accessories, and location summaries.",
+      })[target] || "Manage RSCollection from this private workspace.";
+    }
+    if (target === "analytics") {
+      loadAdminAnalytics().catch((error) => setMessage(formMessage, error.message, "error"));
+    }
+    if (scroll) document.querySelector(`[data-admin-page="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  if (document.startViewTransition) {
+    document.startViewTransition(update);
+  } else {
+    update();
   }
-  if (target === "analytics") {
-    loadAdminAnalytics().catch((error) => setMessage(formMessage, error.message, "error"));
-  }
-  if (scroll) document.querySelector(`[data-admin-page="${target}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function unlockAdmin() {
@@ -1009,6 +1076,43 @@ function unlockAdmin() {
   dashboard?.classList.remove("hidden");
   setAdminPage("add-product");
   Promise.all([loadAdminProducts(), loadAdminOrders(), loadAdminSiteContent(), loadAdminAnalytics()]).catch((error) => setMessage(formMessage, error.message, "error"));
+}
+
+function syncCart(activeProducts) {
+  if (!cart.length) return;
+
+  const activeMap = new Map(activeProducts.map((p) => [p.id, p]));
+  let changed = false;
+  const newCart = [];
+  const changes = [];
+
+  for (const item of cart) {
+    const fresh = activeMap.get(item.id);
+    if (!fresh || fresh.status !== "active" || Number(fresh.stock || 0) <= 0) {
+      changed = true;
+      changes.push(`"${item.name}" is no longer available`);
+    } else {
+      const stock = Number(fresh.stock);
+      let qty = item.qty;
+      if (qty > stock) {
+        qty = stock;
+        changed = true;
+        changes.push(`"${item.name}" quantity reduced to ${stock} (max available)`);
+      }
+      newCart.push({
+        ...item,
+        price: Number(fresh.price),
+        stock: stock,
+        qty: qty
+      });
+    }
+  }
+
+  if (changed) {
+    cart = newCart;
+    saveCart();
+    setMessage(cartMessage, `Cart updated: ${changes.join("; ")}`, "neutral");
+  }
 }
 
 function initStorefront() {
@@ -1025,26 +1129,66 @@ function initStorefront() {
   orderRequestForm?.addEventListener("submit", submitOrderRequest);
   document.querySelectorAll("[data-close-modal]").forEach((button) => button.addEventListener("click", () => productDialog?.close()));
   renderCart();
-  Promise.all([loadSiteContent(), loadProducts(), loadFeatured()]).catch((error) => { console.error(error); if (resultsSummary) resultsSummary.textContent = "Could not load products"; });
+  Promise.all([loadSiteContent(), loadProducts(), loadFeatured()])
+    .then(([content, products]) => {
+      if (products) syncCart(products);
+    })
+    .catch((error) => { console.error(error); if (resultsSummary) resultsSummary.textContent = "Could not load products"; });
 }
 
 function hasUnsavedChanges() {
   return document.querySelector(".unsaved") !== null;
 }
 
-function initAdmin() {
+async function initAdmin() {
   const tokenForm = document.getElementById("admin-token-form");
   const tokenInput = document.getElementById("admin-token");
   const tokenMessage = document.getElementById("token-message");
-  if (sessionStorage.getItem(adminTokenKey)) unlockAdmin();
-  tokenForm?.addEventListener("submit", (event) => {
+
+  try {
+    const authStatus = await requestJSON("/api/admin/check-auth");
+    if (authStatus.authenticated) {
+      unlockAdmin();
+    }
+  } catch (err) {
+    // Keep gate visible
+  }
+
+  tokenForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
-    sessionStorage.setItem(adminTokenKey, tokenInput.value.trim());
-    setMessage(tokenMessage, "Token saved for this browser session.", "success");
-    unlockAdmin();
+    const token = tokenInput.value.trim();
+    setMessage(tokenMessage, "Authenticating...", "neutral");
+    try {
+      const result = await requestJSON("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+      if (result.success) {
+        setMessage(tokenMessage, "Authenticated successfully.", "success");
+        sessionStorage.setItem(adminTokenKey, token);
+        unlockAdmin();
+      }
+    } catch (error) {
+      setMessage(tokenMessage, error.message || "Invalid token.", "error");
+    }
   });
-  document.getElementById("clear-admin-token")?.addEventListener("click", () => { sessionStorage.removeItem(adminTokenKey); tokenInput.value = ""; setMessage(tokenMessage, "Token cleared.", "neutral"); });
-  document.getElementById("admin-logout")?.addEventListener("click", () => { sessionStorage.removeItem(adminTokenKey); window.location.reload(); });
+
+  document.getElementById("clear-admin-token")?.addEventListener("click", () => {
+    sessionStorage.removeItem(adminTokenKey);
+    tokenInput.value = "";
+    setMessage(tokenMessage, "Token cleared.", "neutral");
+  });
+
+  document.getElementById("admin-logout")?.addEventListener("click", async () => {
+    try {
+      await requestJSON("/api/admin/logout", { method: "POST" });
+    } catch (err) {
+      console.error("Logout failed:", err);
+    }
+    sessionStorage.removeItem(adminTokenKey);
+    window.location.reload();
+  });
   [adminInventorySearch, adminStatusFilter, adminSort].forEach((control) => {
     control?.addEventListener("input", refreshAdminInventory);
     control?.addEventListener("change", refreshAdminInventory);

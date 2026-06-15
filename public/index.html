@@ -37,8 +37,9 @@
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;800;900&family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="preload" href="/assets/products/charm-chain.png" as="image" fetchpriority="high" />
   </head>
   <body data-page="storefront">
     <div class="ambient ambient-one"></div>
@@ -59,39 +60,39 @@
     </header>
 
     <main id="home">
-      <section class="hero section-shell">
-        <div class="hero-copy">
-          <p class="eyebrow" data-content="hero.eyebrow">Accessory shop story mode</p>
-          <h1 data-content="hero.title">Your style needs a main character arc.</h1>
-          <p class="hero-text" data-content="hero.subtitle">Browse the drop, pick your item, then message RSCollection on WhatsApp or Instagram. Real photos, clear stock, simple ordering.</p>
-          <div class="hero-actions">
-            <a class="button primary" href="#catalog" data-content="hero.primary_cta">Shop the drop</a>
-            <a class="button ghost" href="#featured" data-content="hero.secondary_cta">See featured picks</a>
-          </div>
-          <div class="trust-strip" aria-label="Shop promises">
-            <div><strong>Real product photos</strong><span>No fake stock product feel</span></div>
-            <div><strong>Clear stock & prices</strong><span>Know before you message</span></div>
-            <div><strong>Simple order flow</strong><span>WhatsApp or Instagram checkout</span></div>
-          </div>
-        </div>
-
-        <aside class="hero-card" aria-label="Featured product gallery">
-          <div class="featured-photo">
-            <img src="/assets/products/charm-chain.png" alt="Crown Charm Chain" />
-            <div class="featured-overlay">
-              <div><small>FEATURED DROP</small><h2>Crown Charm Chain</h2></div>
-              <b>$18</b>
+        <section class="hero section-shell">
+          <div class="banner-copy">
+            <div class="v3-header" style="border-bottom: 2px solid var(--line); padding-bottom: 4px; margin-bottom: 8px;">
+              <span class="v3-tag accent-tag">CODEX VOL. I</span>
+              <p class="eyebrow v3-eyebrow" style="margin: 0;" data-content="hero.eyebrow">Accessory shop story mode</p>
+            </div>
+            <h1 class="banner-title" data-content="hero.title">Your style needs a main character arc.</h1>
+            <p class="banner-subtitle" data-content="hero.subtitle">
+              Browse the drop, pick your item, then message RSCollection on WhatsApp or Instagram. Real photos, clear stock, simple ordering.
+            </p>
+            <div class="hero-actions v3-actions" style="margin: 12px 0 0;">
+              <a class="button primary" href="#catalog" data-content="hero.primary_cta">Shop the drop</a>
+              <a class="button ghost" href="#featured" data-content="hero.secondary_cta">See featured picks</a>
             </div>
           </div>
-          <div class="hero-thumbs" aria-label="Accessory previews">
-            <img src="/assets/products/sword-pendant.png" alt="Silver Wolf Pendant" />
-            <img src="/assets/products/key-pendant.png" alt="Skeleton Key Necklace" />
-            <img src="/assets/products/dragon-blade-pendant.png" alt="Dragon Blade Pendant" />
-            <img src="/assets/products/ornate-key-pendant.png" alt="Ornate Key Pendant" />
+
+          <div class="banner-showcase">
+            <div class="banner-photo">
+              <img src="/assets/products/charm-chain.png" alt="Crown Charm Chain" />
+              <div class="featured-vignette"></div>
+              <div class="banner-overlay">
+                <h3>Crown Charm Chain</h3>
+                <b>$18</b>
+              </div>
+            </div>
+            <div class="banner-thumbs" aria-label="Accessory previews">
+              <img src="/assets/products/sword-pendant.png" alt="Silver Wolf Pendant" />
+              <img src="/assets/products/key-pendant.png" alt="Skeleton Key Necklace" />
+              <img src="/assets/products/dragon-blade-pendant.png" alt="Dragon Blade Pendant" />
+              <img src="/assets/products/ornate-key-pendant.png" alt="Ornate Key Pendant" />
+            </div>
           </div>
-          <div class="hero-status"><span>actual product photos</span><span>necklaces + pendants</span><span>message to order</span></div>
-        </aside>
-      </section>
+        </section>
 
       <section class="section-shell category-rail" aria-label="Product themes">
         <button type="button" data-style="Charm chain">Charm chains</button>

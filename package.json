@@ -4,8 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
-    "dev": "nodemon index.js",
+    "start": "node scripts/migrate.js && node index.js",
+    "dev": "node scripts/migrate.js && nodemon index.js",
     "test": "node --test tests/*.test.js"
   },
   "keywords": [],

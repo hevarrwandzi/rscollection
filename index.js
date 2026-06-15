@@ -85,6 +85,9 @@ const pool = new Pool({
   password: process.env.DB_PASSWORD,
   ssl: process.env.DB_SSL === "true" ? { rejectUnauthorized: false } : undefined,
 });
+pool.on("error", (err) => {
+  console.error("Unexpected error on idle database client:", err);
+});
 // Health check endpoint used by Docker/Caddy/monitoring.
 // It verifies both the Node process and PostgreSQL connectivity.
 async function healthCheck(req, res) {
@@ -131,27 +134,100 @@ const productSelect = `
   FROM products
 `;
 
+function parseCookies(cookieHeader) {
+  const cookies = {};
+  if (!cookieHeader) return cookies;
+  cookieHeader.split(";").forEach((cookie) => {
+    const parts = cookie.split("=");
+    const name = parts[0].trim();
+    const val = parts.slice(1).join("=").trim();
+    if (name) cookies[name] = val;
+  });
+  return cookies;
+}
+
+function base64url(buf) {
+  return buf.toString("base64")
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+}
+
+function base64urlDecode(str) {
+  let base64 = str.replace(/-/g, "+").replace(/_/g, "/");
+  while (base64.length % 4) {
+    base64 += "=";
+  }
+  return Buffer.from(base64, "base64").toString("utf8");
+}
+
+function generateJWT(payload, secret) {
+  const header = { alg: "HS256", typ: "JWT" };
+  const encodedHeader = base64url(Buffer.from(JSON.stringify(header)));
+  const encodedPayload = base64url(Buffer.from(JSON.stringify(payload)));
+
+  const signatureInput = `${encodedHeader}.${encodedPayload}`;
+  const signature = crypto.createHmac("sha256", secret).update(signatureInput).digest();
+  const encodedSignature = base64url(signature);
+
+  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+}
+
+function verifyJWT(token, secret) {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [encodedHeader, encodedPayload, encodedSignature] = parts;
+
+    const signatureInput = `${encodedHeader}.${encodedPayload}`;
+    const expectedSignature = crypto.createHmac("sha256", secret).update(signatureInput).digest();
+    const expectedEncodedSignature = base64url(expectedSignature);
+
+    if (!crypto.timingSafeEqual(Buffer.from(encodedSignature), Buffer.from(expectedEncodedSignature))) {
+      return null;
+    }
+
+    const payload = JSON.parse(base64urlDecode(encodedPayload));
+    if (payload.exp && Date.now() / 1000 > payload.exp) {
+      return null;
+    }
+    return payload;
+  } catch (err) {
+    return null;
+  }
+}
+
 // Admin protection uses one secret token from the server environment.
 // The token is NOT stored in the browser or committed to GitHub; it lives in `.env`
 // locally and in production secrets/env on the server. Admin requests must send it as:
-//   Authorization: Bearer <ADMIN_TOKEN>
+//   Authorization: Bearer <ADMIN_TOKEN> or via admin_session HTTP-only cookie.
 function hasValidAdminToken(req) {
   const expectedToken = process.env.ADMIN_TOKEN;
   if (!expectedToken) return false;
 
-  // Read the incoming Authorization header and remove the "Bearer " prefix.
-  // Example header: Authorization: Bearer <ADMIN_TOKEN>
+  // 1. Check Authorization Header (Bearer token)
   const authHeader = req.get("authorization") || "";
-  const suppliedToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+  if (authHeader.startsWith("Bearer ")) {
+    const suppliedToken = authHeader.slice(7);
+    const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+    const suppliedHash = crypto.createHash("sha256").update(suppliedToken).digest();
+    if (crypto.timingSafeEqual(expectedHash, suppliedHash)) {
+      return true;
+    }
+  }
 
-  // Hash both tokens before comparing them. SHA-256 always returns the same-length
-  // Buffer, so timingSafeEqual can safely compare even if the supplied token is
-  // empty, too short, or too long.
-  const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
-  const suppliedHash = crypto.createHash("sha256").update(suppliedToken).digest();
+  // 2. Check Cookie (JWT token)
+  const cookieHeader = req.get("cookie") || "";
+  const cookies = parseCookies(cookieHeader);
+  const jwtSession = cookies.admin_session;
+  if (jwtSession) {
+    const verified = verifyJWT(jwtSession, expectedToken);
+    if (verified && verified.role === "admin") {
+      return true;
+    }
+  }
 
-  // timingSafeEqual avoids leaking tiny timing clues about the secret token value.
-  return crypto.timingSafeEqual(expectedHash, suppliedHash);
+  return false;
 }
 
 // Express middleware for admin-only routes.
@@ -167,60 +243,6 @@ function requireAdmin(req, res, next) {
   }
 
   return next();
-}
-
-async function ensureDatabaseSchema() {
-  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active'");
-  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS color_options TEXT");
-  await pool.query("ALTER TABLE products ADD COLUMN IF NOT EXISTS image_urls TEXT[]");
-  await pool.query("UPDATE products SET status = 'active' WHERE status IS NULL OR status = ''");
-  await pool.query("UPDATE products SET image_urls = ARRAY[image_url] WHERE (image_urls IS NULL OR array_length(image_urls, 1) IS NULL) AND image_url IS NOT NULL AND image_url <> ''");
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS orders (
-      id SERIAL PRIMARY KEY,
-      customer_name TEXT NOT NULL,
-      phone TEXT NOT NULL,
-      city TEXT NOT NULL,
-      notes TEXT,
-      admin_note TEXT,
-      priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal', 'priority')),
-      total_price NUMERIC(10,2) NOT NULL DEFAULT 0 CHECK (total_price >= 0),
-      status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'contacted', 'confirmed', 'cancelled', 'fulfilled')),
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS admin_note TEXT");
-  await pool.query("ALTER TABLE orders ADD COLUMN IF NOT EXISTS priority TEXT NOT NULL DEFAULT 'normal'");
-  await pool.query("UPDATE orders SET priority = 'normal' WHERE priority IS NULL OR priority = ''");
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS order_items (
-      id SERIAL PRIMARY KEY,
-      order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-      product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
-      product_name TEXT NOT NULL,
-      unit_price NUMERIC(10,2) NOT NULL CHECK (unit_price >= 0),
-      quantity INTEGER NOT NULL CHECK (quantity > 0),
-      line_total NUMERIC(10,2) NOT NULL CHECK (line_total >= 0)
-    )
-  `);
-  await pool.query(`
-    CREATE TABLE IF NOT EXISTS site_content (
-      key TEXT PRIMARY KEY,
-      label TEXT NOT NULL,
-      section TEXT NOT NULL,
-      value TEXT NOT NULL,
-      input_type TEXT NOT NULL DEFAULT 'text',
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
-    )
-  `);
-  for (const item of defaultSiteContent) {
-    await pool.query(
-      `INSERT INTO site_content (key, label, section, value, input_type)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (key) DO NOTHING`,
-      [item.key, item.label, item.section, item.value, item.input_type]
-    );
-  }
 }
 
 function splitListValue(value) {
@@ -539,15 +561,35 @@ function validateOrderRequestPayload(body) {
     return { error: "order cannot exceed 50 items" };
   }
 
+  const rawItems = Array.isArray(body.items) ? body.items.map((item) => ({
+    product_id: Number(item.product_id ?? item.id),
+    quantity: Number(item.quantity ?? item.qty),
+  })) : [];
+
+  const itemsMap = new Map();
+  const validItems = [];
+  const invalidItems = [];
+
+  for (const item of rawItems) {
+    if (Number.isInteger(item.product_id) && item.product_id > 0 && Number.isInteger(item.quantity) && item.quantity > 0) {
+      if (itemsMap.has(item.product_id)) {
+        itemsMap.get(item.product_id).quantity += item.quantity;
+      } else {
+        const copy = { ...item };
+        itemsMap.set(item.product_id, copy);
+        validItems.push(copy);
+      }
+    } else {
+      invalidItems.push(item);
+    }
+  }
+
   const payload = {
     customer_name: body.customer_name?.toString().trim(),
     phone: body.phone?.toString().trim(),
     city: body.city?.toString().trim(),
     notes: body.notes?.toString().trim() || null,
-    items: Array.isArray(body.items) ? body.items.map((item) => ({
-      product_id: Number(item.product_id ?? item.id),
-      quantity: Number(item.quantity ?? item.qty),
-    })) : [],
+    items: [...validItems, ...invalidItems],
   };
 
   if (!payload.customer_name) return { error: "customer name is required" };
@@ -601,8 +643,63 @@ app.get("/api", (req, res) => {
       "PUT /products/:id (admin token required)",
       "PATCH /products/:id/stock (admin token required)",
       "DELETE /products/:id (admin token required)",
+      "POST /api/admin/login",
+      "POST /api/admin/logout",
+      "GET /api/admin/check-auth",
     ],
   });
+});
+
+app.post("/api/admin/login", (req, res) => {
+  const expectedToken = process.env.ADMIN_TOKEN;
+  if (!expectedToken) {
+    return res.status(500).json({ error: "Admin protection is not configured on the server" });
+  }
+
+  const { token } = req.body || {};
+  if (!token) {
+    return res.status(400).json({ error: "Token is required" });
+  }
+
+  const expectedHash = crypto.createHash("sha256").update(expectedToken).digest();
+  const suppliedHash = crypto.createHash("sha256").update(token.toString().trim()).digest();
+
+  if (!crypto.timingSafeEqual(expectedHash, suppliedHash)) {
+    return res.status(401).json({ error: "Invalid admin token" });
+  }
+
+  // Token is valid, generate JWT (expires in 8 hours)
+  const sessionToken = generateJWT(
+    { role: "admin", exp: Math.floor(Date.now() / 1000) + 8 * 60 * 60 },
+    expectedToken
+  );
+
+  res.cookie("admin_session", sessionToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production" || process.env.DB_SSL === "true",
+    sameSite: "strict",
+    path: "/",
+    maxAge: 8 * 60 * 60 * 1000, // 8 hours in milliseconds
+  });
+
+  return res.json({ success: true, message: "Logged in successfully" });
+});
+
+app.post("/api/admin/logout", (req, res) => {
+  res.clearCookie("admin_session", {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production" || process.env.DB_SSL === "true",
+    sameSite: "strict",
+    path: "/",
+  });
+  return res.json({ success: true, message: "Logged out successfully" });
+});
+
+app.get("/api/admin/check-auth", (req, res) => {
+  if (hasValidAdminToken(req)) {
+    return res.json({ authenticated: true });
+  }
+  return res.status(401).json({ authenticated: false, error: "Not authenticated" });
 });
 
 app.get("/site-content", async (req, res) => {
@@ -859,9 +956,9 @@ app.get("/admin/analytics", requireAdmin, async (req, res) => {
   try {
     // 1. Order status counts & revenue summary
     const orderStats = await pool.query(`
-      SELECT 
-        status, 
-        COUNT(*)::int AS count, 
+      SELECT
+        status,
+        COUNT(*)::int AS count,
         COALESCE(SUM(total_price), 0)::numeric AS revenue
       FROM orders
       GROUP BY status
@@ -869,9 +966,9 @@ app.get("/admin/analytics", requireAdmin, async (req, res) => {
 
     // 2. Top-selling products
     const topProducts = await pool.query(`
-      SELECT 
-        product_name, 
-        SUM(quantity)::int AS units_sold, 
+      SELECT
+        product_name,
+        SUM(quantity)::int AS units_sold,
         SUM(line_total)::numeric AS revenue
       FROM order_items
       GROUP BY product_name
@@ -881,9 +978,9 @@ app.get("/admin/analytics", requireAdmin, async (req, res) => {
 
     // 3. Sales by City
     const topCities = await pool.query(`
-      SELECT 
-        city, 
-        COUNT(*)::int AS order_count, 
+      SELECT
+        city,
+        COUNT(*)::int AS order_count,
         COALESCE(SUM(total_price), 0)::numeric AS revenue
       FROM orders
       WHERE status <> 'cancelled'
@@ -1265,16 +1362,9 @@ app.use((req, res) => {
 const PORT = 3000;
 
 if (require.main === module) {
-  ensureDatabaseSchema()
-    .then(() => {
-      app.listen(PORT, () => {
-        console.log(`Server running on port ${PORT}`);
-      });
-    })
-    .catch((error) => {
-      console.error("Failed to prepare database schema:", error);
-      process.exit(1);
-    });
+  app.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}`);
+  });
 }
 
 module.exports = {
