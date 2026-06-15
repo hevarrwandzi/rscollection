@@ -357,9 +357,37 @@ function renderCart() {
   cart.forEach((item) => {
     const row = document.createElement("article");
     row.className = "cart-row";
-    row.innerHTML = `<img src="${escapeHTML(item.image_url || fallbackImage)}" alt="${escapeHTML(item.name)}" /><div><strong>${escapeHTML(item.name)}</strong><span>${formatPrice(item.price)} × ${item.qty}</span></div><button class="button ghost small" type="button">Remove</button>`;
+    row.innerHTML = `
+      <img src="${escapeHTML(item.image_url || fallbackImage)}" alt="${escapeHTML(item.name)}" />
+      <div class="cart-item-details">
+        <strong>${escapeHTML(item.name)}</strong>
+        <div class="cart-item-price-qty">
+          <span>${formatPrice(item.price)}</span>
+          <div class="qty-controls">
+            <button class="qty-btn dec-btn" type="button" aria-label="Decrease quantity">−</button>
+            <span class="qty-val">${item.qty}</span>
+            <button class="qty-btn inc-btn" type="button" aria-label="Increase quantity" ${item.qty >= item.stock ? "disabled" : ""}>+</button>
+          </div>
+        </div>
+      </div>
+      <button class="button ghost small remove-btn" type="button">Remove</button>
+    `;
     row.querySelector("img").onerror = (event) => { event.currentTarget.src = fallbackImage; };
-    row.querySelector("button").addEventListener("click", () => {
+    row.querySelector(".dec-btn").addEventListener("click", () => {
+      if (item.qty <= 1) {
+        cart = cart.filter((cartItem) => cartItem.id !== item.id);
+      } else {
+        item.qty--;
+      }
+      saveCart();
+    });
+    row.querySelector(".inc-btn").addEventListener("click", () => {
+      if (item.qty < item.stock) {
+        item.qty++;
+        saveCart();
+      }
+    });
+    row.querySelector(".remove-btn").addEventListener("click", () => {
       cart = cart.filter((cartItem) => cartItem.id !== item.id);
       saveCart();
     });
