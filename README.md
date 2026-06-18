@@ -6,9 +6,9 @@ This repository is being used as a DevOps practice project: the application exis
 
 ## Tech Stack
 
-- **Runtime:** Node.js 20
+- **Runtime:** Node.js 24
 - **Backend:** Express
-- **Database:** PostgreSQL 17
+- **Database:** PostgreSQL 
 - **Frontend:** Static HTML/CSS/JavaScript served by Express
 - **Reverse proxy / HTTPS:** Caddy 2 Alpine with automatic Let's Encrypt TLS
 - **Containerization:** Docker + Docker Compose
