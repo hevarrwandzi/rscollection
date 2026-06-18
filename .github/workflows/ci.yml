@@ -29,6 +29,9 @@ jobs:
       - name: Check frontend syntax
         run: node --check public/app.js
 
+      - name: Run unit tests
+        run: npm test
+
       - name: Create CI env file
         run: cp .env.example .env
 
